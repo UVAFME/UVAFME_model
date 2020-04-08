@@ -248,8 +248,6 @@ contains
             end if
 
 
-
-
  			!solar radiation (cal/cm2/day)
  			call ex_rad(i, site%latitude, site%slope, site%aspect, daycld(i),  &
 						exrad(i), sun(i), st(i), hrise)
@@ -484,17 +482,14 @@ contains
         !yearly aridity
  		if (year .le. 9) then
  			if (year .eq. 0) then
- 				site%plots(ip)%aridity_base = min(rain/pet, 1.0)
+ 				site%aridity_base = min(rain/pet, 1.0)
  			else if (year .gt. 0 .and. year .lt. 9) then
- 				site%plots(ip)%aridity_base = site%plots(ip)%aridity_base +    &
-                    min(rain/pet, 1.0)
+ 				site%aridity_base = site%aridity_base + min(rain/pet, 1.0)
  			else if (year .eq. 9) then
- 				site%plots(ip)%aridity_base = (site%plots(ip)%aridity_base +   &
-                    min(rain/pet, 1.0))/                                       &
-                    10.0
+ 				site%aridity_base = (site%ridity_base + min(rain/pet, 1.0))/10.0
  			endif
  		end if
- 		site%plots(ip)%aridity = min(rain/pet, 1.0)
+ 		site%aridity = min(rain/pet, 1.0)
 
  		!set site-level attributes to yearly sums of soil/climate values
  		site%pot_evap_day = pet
@@ -1114,13 +1109,12 @@ contains
 
 			!increase or decrease fire probability based on aridity
 			if (year .ge. 10) then
-				if (site%plots(ip)%aridity .lt. site%plots(ip)%aridity_base) then
-					fire_p = site%fire_prob + ((site%plots(ip)%aridity_base -  &
-						site%plots(ip)%aridity)/site%plots(ip)%aridity_base)*  &
-                        site%fire_prob
-				else if (site%plots(ip)%aridity .gt. site%plots(ip)%aridity_base) then
-					fire_p = site%fire_prob - ((site%plots(ip)%aridity -       &
-						site%plots(ip)%aridity_base)/site%plots(ip)%aridity_base)*site%fire_prob
+				if (site%aridity .lt. site%aridity_base) then
+					fire_p = site%fire_prob + ((site%aridity_base -            &
+						site%aridity)/site%aridity_base)*site%fire_prob
+				else if (site%aridity .gt. site%aridity_base) then
+					fire_p = site%fire_prob - ((site%aridity -                 &
+						site%aridity_base)/site%aridity_base)*site%fire_prob
 				else
 					fire_p = site%fire_prob
 				end if
@@ -1128,13 +1122,7 @@ contains
 				fire_p = site%fire_prob
 			endif
 
-            !if (year .eq. 100) then
-            !    fire_p = 1.0
-            !else
-            !    fire_p = site%fire_prob
-            !end if
-            !fire_p = site%fire_prob
-
+   
 			!check for fire or windthrow
 			if (fire_prob < fire_p .or. wind_prob < site%wind_prob) then
 

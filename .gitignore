@@ -1,0 +1,5 @@
+.DS_Store
+src/*mod
+src/*o
+src/*exe
+*exe

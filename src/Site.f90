@@ -49,6 +49,7 @@ module Site
 		real, dimension(60)                            :: lai_array
 		real                                           :: rain
 		real                                           :: solar
+		real                                           :: aridity, aridity_base
 		real                                           :: grow_days
 		real                                           :: e1, e2
 		real                                           :: deg_days

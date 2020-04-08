@@ -39,8 +39,6 @@ implicit none
 		real                                           :: dry_days_upper_layer
 		real                                           :: dry_days_base_layer
 		real                                           :: amlt, leaf_area_w0
-		real                                           :: aridity
-		real                                           :: aridity_base
 		integer                                        :: numspecies
 		integer                                        :: numtrees, num_dead
 		integer                                        :: fire, wind
