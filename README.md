@@ -1,5 +1,7 @@
 # UVAFME 
 
+[![DOI](https://zenodo.org/badge/145996324.svg)](https://zenodo.org/badge/latestdoi/145996324)
+
 ----------------
 
 # UVA Forest Model Enhanced
