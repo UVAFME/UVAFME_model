@@ -1,5 +1,14 @@
 .DS_Store
 src/*mod
 src/*o
-src/*exe
-*exe
+*tex
+*aux
+*log
+*out
+*synctex.gz
+*toc
+manual_figures/*
+*bib
+*blg
+*bbl
+testing/*

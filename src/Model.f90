@@ -486,7 +486,7 @@ contains
  			else if (year .gt. 0 .and. year .lt. 9) then
  				site%aridity_base = site%aridity_base + min(rain/pet, 1.0)
  			else if (year .eq. 9) then
- 				site%aridity_base = (site%ridity_base + min(rain/pet, 1.0))/10.0
+ 				site%aridity_base = (site%aridity_base + min(rain/pet, 1.0))/10.0
  			endif
  		end if
  		site%aridity = min(rain/pet, 1.0)
@@ -1122,7 +1122,7 @@ contains
 				fire_p = site%fire_prob
 			endif
 
-   
+
 			!check for fire or windthrow
 			if (fire_prob < fire_p .or. wind_prob < site%wind_prob) then
 

@@ -1,4 +1,4 @@
-PROG =	UVAFME.exe
+PROG =	UVAFME_v1_NABoreal
 
 SRCS =	Climate.f90 Constants.f90 csv_file.f90 GenusGroups.f90 Input.f90       \
 	IO_Utils.f90 lists.f90 Model.f90 Output.f90 Parameters.f90 Plot.f90        \
@@ -13,7 +13,7 @@ LIBS =
 
 F90 =  ifort
 
-DBG = -CB -g -traceback -fp-model strict -warn unused
+#DBG = -CB -g -traceback -fp-model strict -warn unused
 #OPT = -g -traceback -O2 -axcore-avx2 -xavx -align array64byte -ipo 
 
 F90FLAGS = $(DBG) $(OPT)
