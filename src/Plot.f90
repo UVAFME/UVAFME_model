@@ -1,5 +1,13 @@
-
 module Plot
+
+!*******************************************************************************
+  !
+  ! The Plot module contains the definition of the PlotData type, which holds
+  ! attributes of an individual plot, as well as procedures directly operating
+  ! on plot-level variables.
+  !
+!*******************************************************************************
+
 use Constants
 use Input
 use Species
@@ -8,115 +16,113 @@ use Soil
 
 implicit none
 
-!*******************************************************************************
-  !
-  !The Plot module contains the definition of the PlotData type, which holds
-	!attributes of an individual plot, as well as procedures directly operating
-	!on plot-level variables.
-  !
-!*******************************************************************************
-
+	! Define PlotData type
 	type PlotData
-		type(TreeData),    dimension(:),   allocatable :: trees
-		type(TreeData),    dimension(:),   allocatable :: deadtrees
-		type(SpeciesData), dimension(:),   allocatable :: species
-		type(SoilData)                                 :: soil
-		real,              dimension(:),   allocatable :: avail_spec
-		real,              dimension(:),   allocatable :: seedbank
-		real,              dimension(:),   allocatable :: seedling
-		real,              dimension(:),   allocatable :: con_light
-		real,              dimension(:),   allocatable :: dec_light
-		real,              dimension(:),   allocatable :: cla
-		real,              dimension(:),   allocatable :: nutrient
-		real,              dimension(:,:), allocatable :: cells
-		integer,           dimension(:),   allocatable :: mature
-		real,              dimension(8)                :: d_type
-		real                                           :: seedling_number
-		real                                           :: wind_cat
-		real                                           :: act_evap_day
-		real                                           :: wilt_days
-		real                                           :: flood_days, wl_days
-		real                                           :: dry_days_upper_layer
-		real                                           :: dry_days_base_layer
-		real                                           :: amlt, leaf_area_w0
-		integer                                        :: numspecies
-		integer                                        :: numtrees, num_dead
-		integer                                        :: fire, wind
-		integer                                        :: windCount
-		integer                                        :: stand_age
+		type(TreeData),    dimension(:),   allocatable :: trees        ! Array of tree objects
+		type(TreeData),    dimension(:),   allocatable :: deadtrees    ! Array of dead tree objects
+		type(SoilData)                                 :: soil         ! Soil object
+		real,              dimension(:,:), allocatable :: cells        ! 2D array of plant locations
+		real,              dimension(:),   allocatable :: avail_spec   ! Species "available" for regeneration
+		real,              dimension(:),   allocatable :: seedbank     ! Species-specific seedbank (seeds/m2)
+		real,              dimension(:),   allocatable :: seedling     ! Species-specific seedling bank (seedlings/m2)
+		real,              dimension(:),   allocatable :: con_light    ! Conifer light environment (0-1)
+		real,              dimension(:),   allocatable :: dec_light    ! Deciduous light environment (0-1)
+		real,              dimension(:),   allocatable :: fc_nutr      ! Impact of nutrients on species-specific growth (0-1)
+		real,              dimension(:),   allocatable :: fc_gdd       ! Impact of growing degree-days on species-specific growth (0-1)
+		real,              dimension(:),   allocatable :: fc_drought   ! Impact of drought on species-specific growth (0-1)
+		real,              dimension(:),   allocatable :: fc_perm      ! Impact of permafrost on species-specific growth (0-1)
+		real,              dimension(:),   allocatable :: fc_fire      ! Impact of fire on species-specific regeneration
+		integer,           dimension(:),   allocatable :: mature       ! "Mature" species - that can reproduce
+		real,              dimension(M_TYPES)          :: d_type       ! Biomass killed by different types of mortality (tC/ha)
+		real                                           :: wind_cat     ! Windthrow intensity category
+		real                                           :: act_evap_day ! Actual evapotranspiration (cm)
+		real                                           :: wilt_days    ! Proportion of growing season below wilting point
+		real                                           :: flood_days   ! Proportion of growing season with flooded conditions
+		real                                           :: dry_days     ! Proportion of growing season with drought conditions
+		real                                           :: saw0_ByFC    ! A-layer moisture scaled by field capacity
+		real                                           :: aow0_ByMin   ! Organic layer moisture scaled by wilting point
+		real                                           :: saw0_BySAT   ! A-layer moisture scaled by saturation capacity
+		real                                           :: amlt         ! Seasonal maximum depth of thaw (m)
+		real                                           :: cla          ! Cumulative leaf area on the forest floor (m2)
+		real                                           :: NPP          ! Net primary production (tC/ha)
+		integer                                        :: numtrees     ! Number of live trees on plot
+		integer                                        :: num_dead     ! Number of dead trees on plot
+		integer                                        :: fire         ! Just had a fire (1) or no (0)
+		integer                                        :: wind         ! Just had a windthrow event (1) or no (0)
+		integer                                        :: windCount    ! Number of years since last windthrow event
+		integer                                        :: stand_age    ! Stand age of site (years)
 	end type PlotData
 
 contains
 
 	!:.........................................................................:
 
-	subroutine initialize_plot(self, species, maxcells, maxheight, a_sat,      &
-								a_fc, o_depth, i_text)
-		!initializes invidual plots at a site
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs/Outputs:
-		!	self:       plot instance
-		!	species:    species type instance
-		!Inputs:
-		!	maxcells:   maximum cells on plot (where maxtrees = maxcells*maxcells)
-		!	maxheight:  maximum tree height (m)
-		!	a_sat:      mineral (A-layer) saturation capacity (volumetric)
-		!	a_fc: 		mineral (A-layer) field capacity (volumetric)
-		!	o_depth: 	soil organic layer depth (m)
-		!	i_text: 	soil texture (1: coarse-grained; 2: fine-grained)
+	subroutine initialize_plot(self, numspecies, a_sat, a_fc, a_pwp, o_sat,   &
+			o_fc, o_pwp, o_bd, a_bd, itxt, hum_input)
+		!
+		!  Initializes a plot at a site with starting/input values.
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
+		! Data dictionary: constants
+		real, parameter :: INIT_LAIW = 0.15  ! Initial canopy moisture (cm)
+		real, parameter :: INIT_BIOWD = 42.5 ! Initial litter amount (t/ha)
+		real, parameter :: BIOFF = 0.01617   ! Initial humus (kg/ha)
+		real, parameter :: HCON = 0.658      ! Humus consumption amount (proportion)
+		real, parameter :: PCTN = 0.008      ! Initial N % in humus
 
-		class(PlotData),                 intent(inout) :: self
-		type(SpeciesData), dimension(:), intent(inout) :: species
-		real,                            intent(in)    :: a_sat, a_fc
-		real,                            intent(in)    :: o_depth
-		integer,                         intent(in)    :: i_text
-		integer,                         intent(in)    :: maxcells
-		integer,                         intent(in)    :: maxheight
+		! Data dictionary: calling arguments
+		class(PlotData), intent(inout) :: self       ! Plot object
+		integer,         intent(in)    :: numspecies ! Number of species on plot
+		real,            intent(in)    :: a_sat      ! A-layer saturation capacity (volumetric)
+		real,            intent(in)    :: a_fc       ! A-layer field capacity (volumetric)
+		real,            intent(in)    :: a_pwp      ! A-layer permanent wilting point (volumetric)
+		real,            intent(in)    :: o_sat      ! Organic layer saturation capacity (volumetric)
+		real,            intent(in)    :: o_fc       ! Organic layer field capacity (volumetric)
+		real,            intent(in)    :: o_pwp      ! Organic layer permanent wilting point (volumetric)
+		real,            intent(in)    :: o_bd       ! Organic layer bulk density (kg/m3)
+		real,            intent(in)    :: a_bd       ! A-layer layer bulk density (kg/m3)
+		real,            intent(in)    :: hum_input  ! Initial humus amount (t/ha)
+		integer,         intent(in)    :: itxt       ! Soil texture (0: very coarse; 1: coarse; 2: fine)
 
-		real                                           :: burn
-		real                                           :: duff
-		real, parameter                                :: biowd = 0.0107
-		real, parameter                                :: bioff = 0.01617
-		real, parameter                                :: pctn = 0.008
-		real, parameter                                :: bcon = 0.50
-		real, parameter                                :: hcon = 0.658
-		integer                                        :: n, i
+		! Data dictionary: local variables
+		real            :: duff ! Duff content (kg)
+		integer         :: n, i ! Looping indices
 
 		if (maxcells .ne. 0) then
+			! Allocate tree and cells arrays
 			allocate(self%trees(maxcells*maxcells))
 			allocate(self%deadtrees(maxcells*maxcells))
 			allocate(self%cells(maxcells, maxcells))
 		else
-			call fatal_error("Must allow at least a few trees", 10)
+			stop "Must allow at least a few trees"
 		endif
 
 		if (maxheight .ne. 0) then
+			! Allocate light arrays
 			allocate(self%con_light(maxheight))
 			allocate(self%dec_light(maxheight))
-			allocate(self%cla(maxheight))
 		else
-			call fatal_error("Must have a nonzero maximum height", 10)
+			stop "Must have a nonzero maximum height"
 		endif
 
-		!for now the possible species in each plot is assumed to be all in
-		  !rangelist for the site. But they may not all be able to grow
-		self%numspecies = size(species)
-		self%seedling_number = 0.0
+		! Allocate species-specific arrays
+		allocate(self%seedling(numspecies))
+		allocate(self%seedbank(numspecies))
+		allocate(self%avail_spec(numspecies))
+		allocate(self%fc_nutr(numspecies))
+		allocate(self%fc_perm(numspecies))
+		allocate(self%fc_gdd(numspecies))
+		allocate(self%fc_drought(numspecies))
+		allocate(self%fc_fire(numspecies))
+		allocate(self%mature(numspecies))
 
-		allocate(self%seedling(self%numspecies))
-		allocate(self%seedbank(self%numspecies))
-		allocate(self%avail_spec(self%numspecies))
-		allocate(self%nutrient(self%numspecies))
-		allocate(self%species(self%numspecies))
-		allocate(self%mature(self%numspecies))
-
-		!copy the species list for the plot from the site's list.
-		do n = 1, self%numspecies
-			self%species(n) = species(n)
-		enddo
-
-		self%cells(:,:) = .false.
+		! Set to starting values
+		self%cells = .false.
 		self%numtrees = 0
 		self%num_dead = 0
 		self%fire = 0
@@ -124,116 +130,111 @@ contains
 		self%windCount = 0
 		self%stand_age = 0
 		self%wind_cat = 0.0
-
 		self%cla = 0.0
-
 		self%act_evap_day = 0.0
 		self%flood_days = 0.0
-		self%wl_days = 0.0
 		self%wilt_days = 0.0
-		self%dry_days_upper_layer = 0.0
-		self%dry_days_base_layer = 0.0
+		self%dry_days = 0.0
+		self%aow0_ByMin = 0.0
+		self%saw0_ByFC = 0.0
+		self%saw0_BySAT = 0.0
 		self%amlt = 0.0
-
 		self%seedbank = 0.0
 		self%seedling = 0.0
-		self%seedling_number = 0
 		self%mature = 0
-
 		self%avail_spec = 0.0
 		self%dec_light = 0.0
 		self%con_light =0.0
 		self%d_type = 0.0
-		self%nutrient = 1.0
-		self%soil%lai_w0 = 1.0*0.15
-
-		!initialize soil properties
-
-		!snowpack initialized to 0.0
-		self%soil%snowpack = 0.0
-		self%soil%swe = 0.0
-
-		!permafrost and litter initialization
-		do i = 1, 20
-			self%soil%litter(i) = 0.0
-		end do
-
-		self%soil%cohorts = 0.0
-		self%soil%ncohort = 0
-
-
-		!initializing from bare ground - assume secondary succession conditions
-		  !wood litter layer (fresh wood)
-
-		burn = (biowd/2.0)*bcon !amount burned in tonnes
-
-		self%soil%litter(15) = (biowd/2.0 - burn)/0.0001 !small boles (t/ha)
-		self%soil%litter(14) = (biowd/2.0 - burn)/0.0001 !large boles (t/ha)
-
-		!humus layer
-		self%soil%cohorts(1, 1) = (bioff*(1 - hcon))/0.0001 !t/ha
-		self%soil%cohorts(1, 2) = self%soil%cohorts(1, 1)*pctn !tN/ha
-		self%soil%cohorts(1, 5) = 20.0
-		self%soil%ncohort = 1
-
-		!initialize forest fuels to 0
-		self%soil%avail_fuel = 0.0
-		self%soil%fol_fuel = 0.0
+		self%fc_nutr = 1.0
+		self%fc_gdd = 1.0
+		self%fc_drought = 1.0
+		self%fc_fire = 1.0
+		self%fc_perm = 1.0
+		self%soil%lai_w0 = INIT_LAIW
 		self%soil%twig_fuel = 0.0
 		self%soil%smbl_fuel = 0.0
 		self%soil%lrbl_fuel = 0.0
+		self%soil%avail_fuel = 0.0     
+
+		! Initialize soil properties
+
+		! Snowpack initialized to 0.0
+		self%soil%snowpack = 0.0
+		self%soil%swe = 0.0
+
+		! Litter initialization
+		do i = 1, LIT_LEVS
+			self%soil%litter(i) = 0.0
+		end do
+		self%soil%cohorts = 0.0
+
+		! Initializing from bare ground - assume secondary succession conditions
+		! wood litter layer (fresh wood)
+		self%soil%litter(15) = INIT_BIOWD ! small boles (t/ha)
+		self%soil%litter(14) = INIT_BIOWD ! large boles (t/ha)
+
+		! Humus layer
+		self%soil%cohorts(1, 1) = hum_input
+		self%soil%cohorts(1, 2) = self%soil%cohorts(1, 1)*PCTN ! tN/ha
+		self%soil%cohorts(1, 5) = 21.0
+		self%soil%ncohort = 1
+
+		! N from recent fires
 		self%soil%fan = 0.0
 
-		!calculate organic layer depth
-		duff = self%soil%cohorts(1, 1)/10000*plotsize*1000 !kg/plot
-		self%soil%O_depth = (1.0/plotsize)*(duff/hum_bulk)
+		! Calculate organic layer depth
+		duff = self%soil%cohorts(1, 1)/HEC_TO_M2*plotsize*T_TO_KG ! kg/plot
+		self%soil%O_depth = (1.0/plotsize)*(duff/BULK_DUFF)
 
-		!initialize A-layer, active, and moss-layer depths
+		! Initialize A-layer, active, and moss-layer depths
 		self%soil%A_depth = 1.0
 		self%soil%M_depth = 0.0
 		self%soil%moss_biom = 0.0
 		self%soil%active = self%soil%A_depth
 
-		!default values
-		self%soil%O_bulk_dens = 84.0
-		self%soil%A_bulk_dens = 1250.0
-
-		self%soil%ASAT(1) = 0.39
-		self%soil%AFC(1) = 0.39
-		self%soil%APWP(1) = 0.039
-		self%soil%APWP(2) = 0.06
-
-		!values from site file
-		self%soil%ASAT(2) = a_sat
-		self%soil%AFC(2) = a_fc
-		self%soil%itxt = i_text
-
-		!from sitelist file
-		if (o_depth .ne. rnvalid) self%soil%O_depth = o_depth
+		! Initialize values from site file
+		self%soil%O_bulk_dens = o_bd
+		self%soil%A_bulk_dens = a_bd
+		self%soil%sat(1) = o_sat
+		self%soil%fc(1) = o_fc
+		self%soil%pwp(1) = a_pwp
+		self%soil%pwp(2) = o_pwp
+		self%soil%sat(2) = a_sat
+		self%soil%fc(2) = a_fc
+		self%soil%itxt = itxt
 
 	end subroutine initialize_plot
 
 	!:.........................................................................:
 
 	subroutine delete_plot(self)
-		!deletes a plot and its attributes
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs/Outputs:
-		!	self:       plot instance
+		!
+		!  Frees the memory associated with a plot
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		class(PlotData), intent(inout) :: self
+		! Data dictionary: calling arguments
+		class(PlotData), intent(inout) :: self ! Plot object
 
+		! Deallocate arrays
 		if (allocated(self%trees)) deallocate(self%trees)
 		if (allocated(self%deadtrees)) deallocate(self%deadtrees)
 		if (allocated(self%cells)) deallocate(self%cells)
-		if (allocated(self%species)) deallocate(self%species)
 		if (allocated(self%avail_spec)) deallocate(self%avail_spec)
 		if (allocated(self%seedbank)) deallocate(self%seedbank)
 		if (allocated(self%seedling)) deallocate(self%seedling)
 		if (allocated(self%con_light)) deallocate(self%con_light)
 		if (allocated(self%dec_light)) deallocate(self%dec_light)
-		if (allocated(self%cla)) deallocate(self%cla)
-		if (allocated(self%nutrient)) deallocate(self%nutrient)
+		if (allocated(self%fc_nutr)) deallocate(self%fc_nutr)
+		if (allocated(self%fc_drought)) deallocate(self%fc_drought)
+		if (allocated(self%fc_perm)) deallocate(self%fc_perm)
+		if (allocated(self%fc_gdd)) deallocate(self%fc_gdd)
+		if (allocated(self%fc_fire)) deallocate(self%fc_fire)
 		if (allocated(self%mature)) deallocate(self%mature)
 
 	end subroutine delete_plot
@@ -241,41 +242,49 @@ contains
 	!:.........................................................................:
 
 	subroutine tree_dm_cats(self, genera, field, diam_categories)
-		!bins number of trees on a plot into DBH size classes, for writing to
-		  !output files
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs:
-		!	self:           plot instance
-		!	genera:         species or genus names
-		!	field:          'species' or 'genus'
-		!Outputs:
-		!	diam_categories: number of stems in each DBH bin
+		!
+		!  Bins the number of trees on a plot into DBH size classes, for
+		!	writing to output files
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		class(PlotData),                         intent(in)  :: self
-		character(len = MAX_NLEN), dimension(:), intent(in)  :: genera
-		character(len = 8),                      intent(in)  :: field
-		integer, dimension(size(genera), NHC),   intent(out) :: diam_categories
+		! Data dictionary: calling arguments
+		class(PlotData),                         intent(in)  :: self            ! Plot object
+		character(len = MAX_NLEN), dimension(:), intent(in)  :: genera          ! Names of genera/species
+		character(len = 8),                      intent(in)  :: field           ! 'genus' or 'species'
+		integer, dimension(size(genera), NHC),   intent(out) :: diam_categories ! Array of binned tree density
 
-		character(len = MAX_NLEN)                            :: comp
-		integer, dimension(NHC)                              :: tree_diams
-		integer                                              :: numitems
-		integer                                              :: ig, n
+		! Data dictionary: local variables
+		character(len = MAX_NLEN) :: comp
+		integer, dimension(NHC)   :: tree_diams
+		integer                   :: numitems   ! Number of species/genera
+		integer                   :: ig, n      ! Looping indices
 
+		! Get number of species/genera
 		numitems = size(genera)
+
+		! Initialize accumulation of trees
 		diam_categories = 0
 
+		! Loop through genera and trees
 		do ig = 1, numitems
 			do n = 1, self%numtrees
+
+				! Get correct identifier - genus or species ID
 				if (field .eq. 'genus') then
-					comp = self%trees(n)%genus_name
+					comp = self%trees(n)%spec_ptr%genus_name
 				else if (field .eq. 'species') then
-					comp = self%trees(n)%unique_id
+					comp = self%trees(n)%spec_ptr%unique_id
 				endif
 
+				! If we are on the right one - get the DBH categories
 				if (comp == genera(ig)) then
 					call get_diam_category(self%trees(n), tree_diams)
-					diam_categories(ig, :) = diam_categories(ig, : ) +         &
-						tree_diams
+					diam_categories(ig,:) = diam_categories(ig,:) + tree_diams
 				endif
 			enddo
 		enddo
@@ -285,201 +294,217 @@ contains
 	!:.........................................................................:
 
 	subroutine sum_over_sg(self, genera, field, basal_area, leaf_bm, biomC,    &
-							biomN, max_ht, max_diam, mean_dbh, mean_year,      &
-							biom_categories, envresp_mn)
-		!aggregates live species- or genus-level data for plot
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs:
-		!	self:            plot instance
-		!	genera:          species or genus names
-		!	field:           'species' or 'genus'
-		!Outputs:
-		!	basal_area:      basal area on plot (cm2)
-		!   leaf_bm:         leaf biomass (tC)
-		!   mean_dbh:        average DBH (cm)
-		!   mean_year:       average tree age (years)
-		!   bioMC:           biomass (tC)
-		!   biomN:           N content (tN)
-		!   max_ht:          maximum height (m)
-		!   max_diam:        maximum DBH (cm)
-		!   biom_categories: biomass binned by DBH (tC)
-		!   envresp_mn:      mean growth response for each limiting factor (0-1)
+		biomN, max_ht, max_diam, mean_dbh, mean_year, biom_cats, envresp_mn,   &
+		basal_lg, basal_sm, dbh_lg, dbh_sm, n_lg, n_sm, biomC_lg, biomC_sm)
+		!
+		!  Aggregates live species- or genus-level data for plot
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
+		class(PlotData),                         intent(in)  :: self       ! Plot object
+		character(len = MAX_NLEN), dimension(:), intent(in)  :: genera     ! Species or genus names
+		character(len = 8),                      intent(in)  :: field      ! 'species' or 'genus'
+		real, dimension(size(genera)),           intent(out) :: basal_area ! Basal area sum (cm2)
+		real, dimension(size(genera)),           intent(out) :: leaf_bm    ! Leaf biomass sum (tC)
+		real, dimension(size(genera)),           intent(out) :: mean_dbh   ! Mean DBH (cm)
+		real, dimension(size(genera)),           intent(out) :: mean_year  ! Average tree age (years)
+		real, dimension(size(genera)),           intent(out) :: basal_lg   ! Basal area sum > 9 cm DBH (cm2)
+		real, dimension(size(genera)),           intent(out) :: basal_sm   ! Basal area sum < 9 cm DBH (cm2)
+		real, dimension(size(genera)),           intent(out) :: dbh_lg     ! Mean DBH > 9 cm DBH (cm)
+		real, dimension(size(genera)),           intent(out) :: dbh_sm     ! Mean DBH < 9 cm DBH (cm)
+		real, dimension(size(genera)),           intent(out) :: n_lg       ! Total stems > 9 cm DBH (#)
+		real, dimension(size(genera)),           intent(out) :: n_sm       ! Total stems < 9 cm DBH (#)
+		real, dimension(size(genera)),           intent(out) :: biomC      ! Biomass sum (tC)
+		real, dimension(size(genera)),           intent(out) :: biomN      ! N content sum (tN)
+		real, dimension(size(genera)),           intent(out) :: biomC_lg   ! Biomass sum > 9 cm DBH (tC)
+		real, dimension(size(genera)),           intent(out) :: biomC_sm   ! Biomass sum < 9 cm DBH (tC)
+		real, dimension(size(genera)),           intent(out) :: max_ht     ! Maximum height (m)
+		real, dimension(size(genera)),           intent(out) :: max_diam   ! Maximum diameter (cm)
+		real, dimension(size(genera), NHC),      intent(out) :: biom_cats  ! Biomass sum binned by DBH (tC)
+		real, dimension(size(genera), FC_NUM),   intent(out) :: envresp_mn ! Mean growth response (0-z1)
 
-		class(PlotData),                         intent(in)  :: self
-		character(len = MAX_NLEN), dimension(:), intent(in)  :: genera
-		character(len = 8),                      intent(in)  :: field
-		real, dimension(size(genera)),           intent(out) :: basal_area,    &
-													            leaf_bm,       &
-													            mean_dbh,      &
-													            mean_year
-		real, dimension(size(genera)),          intent(out)  :: biomC
-		real, dimension(size(genera)),          intent(out)  :: biomN
-		real, dimension(size(genera)),          intent(out)  :: max_ht
-		real, dimension(size(genera)),          intent(out)  :: max_diam
-		real, dimension(size(genera), NHC),     intent(out)  :: biom_categories
-		real, dimension(size(genera), 6),       intent(out)  :: envresp_mn
+		! Data dictionary: local variables
+		real, dimension(size(genera), FC_NUM) :: envresp      ! Sum of growth responses (0-1)
+		real, dimension(size(genera), FC_NUM) :: n_er         ! Number of trees check for each growth response
+		real, dimension(size(genera))         :: n            ! Total stems (#)
+		real, dimension(size(genera))         :: sum_dbh      ! Sum of diameters (cm)
+		real, dimension(size(genera))         :: sumdbh_lg    ! Sum of diameters > 9.0 cm
+		real, dimension(size(genera))         :: sumdbh_sm    ! Sum of diameters < 9.0 cm
+		real, dimension(size(genera))         :: sum_year     ! Sum of tree ages (year)
+		character(len=MAX_NLEN)               :: comp         ! Tree identifier (species or genus)
+		real                                  :: lf_biom      ! Local tree leaf biomass (tC)
+		real                                  :: l_cn         ! Tree C:N ratio
+		real                                  :: tot_tree_bc  ! Total tree biomass (tC)
+		real                                  :: tot_tree_bn  ! Total tree N content (tN)
+		real                                  :: dm           ! Local tree diameter (cm)
+		integer                               :: numitems     ! Number of species/genera
+		integer                               :: it, is, k    ! Looping indices
 
-		integer, dimension(size(genera))                     :: n
-		real,    dimension(size(genera))                     :: sum_dbh
-		real,    dimension(size(genera))                     :: sum_year
-		real,    dimension(size(genera), 6)                  :: envresp, n_er
-		character(len=MAX_NLEN)                              :: comp
-		real                                                 :: lf_biom
-		real                                                 :: l_cn
-		real                                                 :: tot_tree_bc
-		real                                                 :: tot_tree_bn
-		real                                                 :: dm
-		integer                                              :: numitems
-		integer                                              :: it, is
-
-		numitems = size(genera)
+		! Initialize accumulators
 		basal_area = 0.0
 		biomC = 0.0
 		biomN = 0.0
 		leaf_bm = 0.0
 		max_ht = 0.0
 		max_diam = 0.0
-		n = 0
-		n_er = 0
+		n = 0.0
+		n_er = 0.0
 		sum_dbh = 0.0
 		sum_year = 0.0
-		biom_categories = 0.0
+		biom_cats = 0.0
 		envresp = 0.0
+		basal_lg = 0.0
+		basal_sm = 0.0
+		biomC_lg = 0.0
+		biomC_sm = 0.0
+		sumdbh_lg = 0.0
+		sumdbh_sm = 0.0
+		n_lg = 0.0
+		n_sm = 0.0
+		dbh_lg = 0.0
+		dbh_sm = 0.0
+
+		! Get size of species/genera
+		numitems = size(genera)
 
 		do is = 1, numitems
 			do it = 1, self%numtrees
 
+				! Get identifier (genus or unique ID)
 				if (field .eq. 'genus') then
-					comp = self%trees(it)%genus_name
+					comp = self%trees(it)%spec_ptr%genus_name
 				else if (field .eq. 'species') then
-					comp = self%trees(it)%unique_id
+					comp = self%trees(it)%spec_ptr%unique_id
 				endif
 
 				if (comp == genera(is)) then
+					! If we have the correct species/genus, sum up values
 
-					!number of trees in that genera
-					n(is) = n(is) + 1
-
-					!get C:N ratio
-					if (self%trees(it)%conifer) then
-						l_cn = con_leaf_c_n
-					else
-						l_cn = dec_leaf_c_n
-					endif
-
-					!grab diameter
+					! Grab diameter
 					dm = self%trees(it)%diam_bht
 
-					!calculate and sum up basal area
-					basal_area(is) = basal_area(is) + 0.25*pi*dm**2
+					if (self%trees(it)%diam_bht .ge. 9.0) then
 
-					!calculate and sum biomass (tC) and N content
+						! Calculate and sum basal area (m2)
+						basal_lg(is) = basal_lg(is) +                          &
+							CM_TO_M*CM_TO_M*0.25*pi*dm**2
+
+						! Calculate and sum biomass (tC)
+						lf_biom = self%trees(it)%leaf_bm
+						tot_tree_bc = self%trees(it)%stemC +                   &
+							self%trees(it)%branchC + lf_biom
+						biomC_lg(is) = biomC_lg(is) + tot_tree_bc
+
+						! Sum up number and diameter
+						sumdbh_lg(is) = sumdbh_lg(is) + dm
+						n_lg(is) = n_lg(is) + 1.0
+
+					else if (self%trees(it)%diam_bht .lt. 9.0) then
+						if (self%trees(it)%forska_ht .ge. 1.3) then
+
+							! Calculate and sum basal area (m2)
+							basal_sm(is) = basal_sm(is) +                      &
+								CM_TO_M*CM_TO_M*0.25*pi*dm**2
+
+							! Calculate and sum biomass (tC)
+							lf_biom = self%trees(it)%leaf_bm
+							tot_tree_bc = self%trees(it)%branchC +             &
+								self%trees(it)%stemC + lf_biom
+							biomC_sm(is) = biomC_sm(is) + tot_tree_bc
+
+							! Sum up number and diameter
+							sumdbh_sm(is) = sumdbh_sm(is) + dm
+							n_sm(is) = n_sm(is) + 1.0
+						end if
+					end if
+
+					! Number of trees in that genera
+					n(is) = n(is) + 1.0
+
+					! Get C:N ratio
+					if (self%trees(it)%conifer) then
+						l_cn = CON_LEAF_C_N
+					else
+						l_cn = DEC_LEAF_C_N
+					endif
+
+					! Calculate and sum up basal area (m2)
+					basal_area(is) = basal_area(is) +                          &
+						CM_TO_M*CM_TO_M*0.25*pi*dm**2
+
+					! Calculate and sum biomass (tC) and N content
 					lf_biom = self%trees(it)%leaf_bm
 					leaf_bm(is) = leaf_bm(is) + lf_biom
 
-					tot_tree_bc = self%trees(it)%biomC + lf_biom
+					tot_tree_bc = self%trees(it)%branchC +                     &
+						self%trees(it)%stemC + lf_biom
 					tot_tree_bn = self%trees(it)%biomN + lf_biom/l_cn
 
 					biomC(is) = biomC(is) + tot_tree_bc
 					biomN(is) = biomN(is) + tot_tree_bn
 
-					!get biomass in DBH bins
-					if (dm >= 0.5 .and. dm <= 5.0) then
-						biom_categories(is, 1) =                               &
-							biom_categories(is, 1) + tot_tree_bc
-					else if (dm > 5.0 .and. dm <= 10.0) then
-						biom_categories(is, 2) =                               &
-							biom_categories(is, 2) + tot_tree_bc
-					else if (dm > 10.0 .and. dm <= 20.0) then
-						biom_categories(is, 3) =                               &
-							biom_categories(is, 3) + tot_tree_bc
-					else if (dm > 20.0 .and. dm <= 30.0) then
-						biom_categories(is, 4) =                               &
-							biom_categories(is, 4) + tot_tree_bc
-					else if (dm > 30.0 .and. dm <= 40.0) then
-						biom_categories(is, 5) =                               &
-							biom_categories(is, 5) + tot_tree_bc
-					else if (dm > 40.0 .and. dm <= 50.0) then
-						biom_categories(is, 6) =                               &
-							biom_categories(is, 6) + tot_tree_bc
-					else if (dm > 50.0 .and. dm <= 60.0) then
-						biom_categories(is, 7) =                               &
-							biom_categories(is, 7) + tot_tree_bc
-					else if (dm > 60.0 .and. dm <= 70.0) then
-						biom_categories(is, 8) =                               &
-							biom_categories(is, 8) + tot_tree_bc
-					else if (dm > 70.0 .and. dm <= 80.0) then
-						biom_categories(is, 9) =                               &
-							biom_categories(is, 9) + tot_tree_bc
-					else if (dm > 80.0 .and. dm <= 90.0) then
-						biom_categories(is, 10) =                              &
-							biom_categories(is, 10) + tot_tree_bc
-					else if (dm > 90.0) then
-						biom_categories(is, 11) =                              &
-							biom_categories(is, 11) + tot_tree_bc
-					endif
+					! Get biomass in DBH bins
+					do k = 1, NHC - 1
+						if (dm > DBC_MIN(k) .and. dm <= DBC_MAX(k)) then
+							biom_cats(is, k) = biom_cats(is, k) + tot_tree_bc
+						end if
+					end do
+					if (dm > DBC_MIN(NHC)) then
+						biom_cats(is, NHC) = biom_cats(is, NHC) + tot_tree_bc
+					end if
 
-					!get maximum height and DBH
+					! Get maximum height and DBH
 					max_ht(is) = max(max_ht(is), self%trees(it)%forska_ht)
 					max_diam(is) = max(max_diam(is), self%trees(it)%diam_bht)
 
-					!sum up DBH and age
+					! Sum up DBH and age
 					sum_dbh(is) = sum_dbh(is) + self%trees(it)%diam_bht
 					sum_year(is) = sum_year(is) + float(self%trees(it)%tree_age)
 
-					!sum up the growth responses for each factor
-					if (self%trees(it)%env_resp(1) .ge. 0.0) then
-						n_er(is, 1) = n_er(is, 1) + 1
-						envresp(is, 1) = envresp(is, 1) +                      &
-							self%trees(it)%env_resp(1)
-					end if
+					! Sum up the growth responses for each factor
+					do k = 1, FC_NUM
+						if (self%trees(it)%env_resp(k) >= epsilon(1.0)) then
+							n_er(is, k) = n_er(is, k) + 1
+							envresp(is, k) = envresp(is, k) +                  &
+							self%trees(it)%env_resp(k)
+						end if
+					end do
 
-					if (self%trees(it)%env_resp(2) .ge. 0.0) then
-						n_er(is, 2) = n_er(is, 2) + 1
-						envresp(is, 2) = envresp(is, 2) +                      &
-							self%trees(it)%env_resp(2)
-					end if
-					if (self%trees(it)%env_resp(3) .ge. 0.0) then
-						n_er(is, 3) = n_er(is, 3) + 1
-						envresp(is, 3) = envresp(is, 3) +                      &
-							self%trees(it)%env_resp(3)
-					end if
-					if (self%trees(it)%env_resp(4) .ge. 0.0) then
-						n_er(is, 4) = n_er(is, 4) + 1
-						envresp(is, 4) = envresp(is, 4) +                      &
-							self%trees(it)%env_resp(4)
-					end if
-					if (self%trees(it)%env_resp(5) .ge. 0.0) then
-						n_er(is, 5) = n_er(is, 5) + 1
-						envresp(is, 5) = envresp(is, 5) +                      &
-							self%trees(it)%env_resp(5)
-					end if
-					if (self%trees(it)%env_resp(6) .ge. 0.0) then
-						n_er(is, 6) = n_er(is, 6) + 1
-						envresp(is, 6) = envresp(is, 6) +                      &
-							self%trees(it)%env_resp(6)
-					end if
 				endif
 			enddo
 		enddo
 
-		!get average of DBH, age, and environmental responses
+		! Get average of DBH, age, and environmental responses
 		do is = 1, numitems
-			if (n(is) .eq. 0) then
+			if (n(is) .eq. 0.0) then
 				mean_dbh(is) = 0.0
 				mean_year(is) = 0.0
-				envresp_mn(is, :) = rnvalid
+				envresp_mn(is, :) = RNVALID
 			else
 				mean_dbh(is) = sum_dbh(is)/n(is)
 				mean_year(is) = sum_year(is)/n(is)
-				envresp_mn(is, 1) = envresp(is, 1)/n_er(is, 1)
-				envresp_mn(is, 2) = envresp(is, 2)/n_er(is, 2)
-				envresp_mn(is, 3) = envresp(is, 3)/n_er(is, 3)
-				envresp_mn(is, 4) = envresp(is, 4)/n_er(is, 4)
-				envresp_mn(is, 5) = envresp(is, 5)/n_er(is, 5)
-				envresp_mn(is, 6) = envresp(is, 6)/n_er(is, 6)
-
+				do k = 1, FC_NUM
+					if (n_er(is, k) > 0.0) then
+						envresp_mn(is, k) = envresp(is, k)/n_er(is, k)
+					else
+						envresp_mn(is, k) = RNVALID
+					end if
+				end do
 			endif
+
+			if (n_lg(is) .eq. 0.0) then
+				dbh_lg(is) = 0.0
+			else
+				dbh_lg(is) = sumdbh_lg(is)/n_lg(is)
+			end if
+			if (n_sm(is) .eq. 0.0) then
+				dbh_sm(is) = 0.0
+			else
+				dbh_sm(is) = sumdbh_sm(is)/n_sm(is)
+			end if
 		enddo
 
 	end subroutine sum_over_sg
@@ -487,39 +512,40 @@ contains
 	!:.........................................................................:
 
 	subroutine sum_over_deadsg(self, genera, field, biomC, mean_dbh,           &
-								death_markers)
-		!aggregates dead species- or genus-level data for plot
-		!Authors: Adrianna Foster and Jacquelyn Shuman 2015, v. 1.0
-		!Inputs:
-		!	self:          plot instance
-		!	genera:        species or genus names
-		!	field:         'species' or 'genus'
-		!Outputs:
-		!	biomC:         biomass (tC)
-		!   mean_dbh:      average DBH (cm)
-		!   death_markers: biomass mortality from each limiting factor or
-		!					disturbance (tC)
+		death_markers)
+		!
+		!  Aggregates dead species- or genus-level data for plot
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/15     A. C. Foster          Original Code
+		!
 
+		! Data dictionary: calling arguments
+		class(PlotData),                         intent(in)  :: self          ! Plot object
+		character(len = MAX_NLEN), dimension(:), intent(in)  :: genera        ! Species or genus names
+		character(len = 8),                      intent(in)  :: field         ! 'species' or 'genus'
+		real, dimension(size(genera)),           intent(out) :: mean_dbh      ! Mean DBH (cm)
+		real, dimension(size(genera)),           intent(out) :: biomC         ! Biomass sum (tC)
+		real, dimension(size(genera), M_TYPES),  intent(out) :: death_markers ! Stems lost to each mortality type (#)
 
-		class(PlotData),                         intent(in)  :: self
-		character(len = MAX_NLEN), dimension(:), intent(in)  :: genera
-		character(len = 8),                      intent(in)  :: field
-		real, dimension(size(genera)),           intent(out) :: mean_dbh
-		real, dimension(size(genera)),           intent(out) :: biomC
-		real, dimension(size(genera), 8),        intent(out) :: death_markers
+		! Data dictionary: local variables
+		integer, dimension(size(genera)) :: n           ! Total stems (#)
+		real,    dimension(size(genera)) :: sum_dbh     ! Sum of DBHs (cm)
+		character(len=MAX_NLEN)          :: comp        ! Tree identifier (species/genus)
+		real                             :: lf_biom     ! Tree leaf biomass (tC)
+		real                             :: l_cn        ! Tree C:N ratio
+		real                             :: tot_tree_bc ! Total tree biomass (tC)
+		real                             :: dm          ! Tree diameter (cm)
+		integer                          :: numitems    ! Total number of species/genera
+		integer                          :: it, is      ! Looping indices
+		integer                          :: ks          ! Killing factor for tree
 
-		integer, dimension(size(genera))                     :: n
-		real,    dimension(size(genera))                     :: sum_dbh
-		character(len=MAX_NLEN)                              :: comp
-		real                                                 :: lf_biom
-		real                                                 :: l_cn
-		real                                                 :: tot_tree_bc
-		real                                                 :: dm
-		integer                                              :: numitems
-		integer                                              :: it, is
-		integer                                              :: ks
-
+		! Get total number of species/genera
 		numitems = size(genera)
+
+		! Initialize accumulators
 		biomC = 0.0
 		n = 0
 		sum_dbh = 0.0
@@ -528,47 +554,49 @@ contains
 		do is = 1, numitems
 			do it = 1, self%num_dead
 
+				! Get identifier (genus or unique ID)
 				if (field .eq. 'genus') then
-					comp = self%deadtrees(it)%genus_name
+					comp = self%deadtrees(it)%spec_ptr%genus_name
 				else if (field .eq. 'species') then
-					comp = self%deadtrees(it)%unique_id
+					comp = self%deadtrees(it)%spec_ptr%unique_id
 				endif
 
+				! If we have the correct species/genus
 				if (comp == genera(is)) then
 
-					!get number of trees in that genera
+					! Get number of trees in that genera
 					n(is) = n(is) + 1
 
-					!get C:N ratio
+					! Get C:N ratio
 					if (self%deadtrees(it)%conifer) then
-						l_cn = con_leaf_c_n
+						l_cn = CON_LEAF_C_N
 					else
-						l_cn = dec_leaf_c_n
+						l_cn = DEC_LEAF_C_N
 					endif
 
-					!what was the killing factor
+					! What was the killing factor
 					ks = self%deadtrees(it)%stressor
 
-					!get diameter
+					! Get diameter
 					dm = self%deadtrees(it)%diam_bht
 
-					!get and sum up biomass C
-
+					! Get and sum up biomass C
 					lf_biom = self%deadtrees(it)%leaf_bm
-					tot_tree_bc = self%deadtrees(it)%biomC + lf_biom
+					tot_tree_bc = self%deadtrees(it)%branchC +                 &
+						self%deadtrees(it)%stemC + lf_biom
 					biomC(is) = biomC(is) + tot_tree_bc
 
-					!bin biomass into the limiting factors/disturbances
+					! Bin biomass into the limiting factors/disturbances
 					death_markers(is, ks) = death_markers(is, ks) + tot_tree_bc
 
-					!sum up DBH
+					! Sum up DBH
 					sum_dbh(is) = sum_dbh(is) + self%deadtrees(it)%diam_bht
 
 				endif
 			end do
 		end do
 
-		!get average DBH
+		! Get average DBH
 		do is = 1, numitems
 			if (n(is) .eq. 0) then
 				mean_dbh(is) = 0.0

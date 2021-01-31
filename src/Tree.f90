@@ -1,352 +1,470 @@
 module Tree
-
-   use Constants
-   use Species
-   use Random
-
-   implicit none
-
 !*******************************************************************************
   !
-  !The Tree module contains attributes and procedures relevant to tree growth
-  !and mortality
+  ! The Tree module contains attributes and procedures relevant to tree growth
+  ! and mortality
   !
 !*******************************************************************************
 
-	real, parameter              :: tC = 3.92699e-5
-	real, parameter              :: beta = 1.0
+    use Constants
+    use Species
+    use Random
 
-	type, extends(SpeciesData)   :: TreeData
-		real                     :: diam_max
-		real                     :: diam_bht
-		real                     :: diam_canht
-		real                     :: canopy_ht
-		real                     :: foret_ht
-		real                     :: forska_ht
-		real                     :: leaf_bm
-		real                     :: biomC
-		real                     :: stemC
-		real                     :: twigC
-		real                     :: rootC
-		real                     :: biomN
-		real                     :: CK
-		real                     :: row, col
-		real, dimension(6)       :: env_resp
-		integer                  :: species_index
-		integer                  :: mort_count
-		integer                  :: tree_age
-		integer                  :: stressor
-		logical                  :: mort_marker
-	end type TreeData
+    implicit none
+
+    ! Define tree data type
+    type                            :: TreeData
+        class(SpeciesData), pointer :: spec_ptr => null() ! Pointer to species data
+        real, dimension(FC_NUM)     :: env_resp           ! Species growth response to stressors (0-1)
+        real                        :: diam_opt           ! Optimum diameter increment growth (cm)
+        real                        :: diam_bht           ! Diameter at breast height (cm)
+        real                        :: diam_canht         ! Diameter at clear branch bole height (cm)
+        real                        :: canopy_ht          ! Clear branch bole height (m)
+        real                        :: forska_ht          ! Tree height (m)
+        real                        :: leaf_bm            ! Leaf biomass (tC)
+        real                        :: biomC              ! Aboveground woody biomass (tC)
+        real                        :: stemC              ! Stem biomass (tC)
+        real                        :: branchC            ! Branch biomass (tC)
+        real                        :: rootC              ! Root biomass (tC)
+        real                        :: biomN              ! N content (tC)
+        real                        :: CK                 ! Proportion of crown scorched by fire (%)
+        real                        :: row                ! Row location
+        real                        :: col                ! Column location
+        integer                     :: mort_count         ! How many years tree has experiences low growth
+        integer                     :: tree_age           ! Tree age (years)
+        integer                     :: stressor           ! Which factor is most stressful
+        integer                     :: conifer            ! 1: conifer; 2: deciduous
+        integer                     :: species_index      ! Species index - points to SpeciesData array location
+        logical                     :: mort_marker        ! Is tree marked for death?
+    end type TreeData
 
 contains
 
-!===============================================================================
-! Methods
-!===============================================================================
 
 	!:.........................................................................:
 
-	subroutine initialize_tree(self, tree_species, si)
-		!initializes tree with initial conditions
-		!Inputs/Outputs:
-		!	self:         tree instance
-		!Inputs:
-		!	tree_species: species instance
-		!	si:	          species index
+	subroutine initialize_tree(self, tree_species, is)
+        !
+        !  Initializes a tree object with initial conditions
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    01/01/12     K. Holcomb           Original Code
+        !
 
-		class(TreeData),             intent(inout) :: self
-		type(SpeciesData), optional, intent(in)    :: tree_species
-		integer,           optional, intent(in)    :: si
+        ! Data dictionary: calling arguments
+		class(TreeData),           intent(inout) :: self         ! Tree object
+		type(SpeciesData), target, intent(in)    :: tree_species ! Species object
+        integer,                   intent(in)    :: is           ! Integer for species array
 
-		!constructor
+		! Constructor
+        self%env_resp = RNVALID
+        self%diam_opt = 0.0
 		self%diam_bht = 0.0
 		self%diam_canht = 0.0
-		self%canopy_ht = std_ht
-		self%foret_ht = 1.0
-		self%forska_ht = 1.0
+		self%canopy_ht = STD_HT
+		self%forska_ht = STD_HT
+        self%leaf_bm = 0.0
 		self%biomC = 0.0
-		self%twigC = 0.0
 		self%stemC = 0.0
+        self%branchC = 0.0
 		self%rootC = 0.0
 		self%biomN = 0.0
-		self%mort_count = 0
 		self%CK = 0.0
-		self%tree_age = 0
+        self%row = 0
+        self%col = 0
+        self%mort_count = 0
+        self%tree_age = 0
 		self%stressor = 0
 		self%mort_marker = .false.
-		self%env_resp = -999.0
-		self%row = 0
-		self%col = 0
+        self%species_index = is
 
-		!attach species data and species index
-		if (present(tree_species)) then
-			self%SpeciesData = tree_species
-		endif
+		! Attach species data and species index
+        if (associated(self%spec_ptr)) nullify(self%spec_ptr)
+        allocate(self%spec_ptr)
+		self%spec_ptr => tree_species
 
-		if ( present(si) ) then
-			self%species_index = si
-		else
-			self%species_index = 0
-		endif
+        ! Grab this from species data for easier use
+        self%conifer = self%spec_ptr%conifer
 
 	end subroutine initialize_tree
 
 	!:.........................................................................:
 
 	subroutine copy_tree(self, tree)
-		!copies tree from old list to new
-		!Inputs/Outputs:
-		!	self: tree instance (new)
-		!Inputs:
-		!	tree: tree instance (old)
+        !
+        !  Copies attributes from one tree object to another
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    01/01/12     K. Holcomb           Original Code
+        !
 
+        ! Data dictionary: calling arguments
 		class(TreeData), intent(inout) :: self
 		class(TreeData), intent(in)    :: tree
 
-		self%diam_max       = tree%diam_max
+        ! Copy attributes
+        self%env_resp       = tree%env_resp
+        self%spec_ptr       => tree%spec_ptr
+        self%species_index  = tree%species_index
+		self%diam_opt       = tree%diam_opt
 		self%diam_bht       = tree%diam_bht
 		self%diam_canht     = tree%diam_canht
 		self%canopy_ht      = tree%canopy_ht
-		self%foret_ht       = tree%foret_ht
 		self%forska_ht      = tree%forska_ht
 		self%leaf_bm        = tree%leaf_bm
 		self%biomC          = tree%biomC
-		self%twigC          = tree%twigC
-		self%stemC          = tree%stemC
+        self%stemC          = tree%stemC
+		self%branchC        = tree%branchC
 		self%rootC          = tree%rootC
 		self%biomN          = tree%biomN
-		self%species_index  = tree%species_index
+        self%CK             = tree%CK
+        self%row            = tree%row
+        self%col            = tree%col
 		self%mort_count     = tree%mort_count
 		self%tree_age       = tree%tree_age
-		self%CK             = tree%CK
+        self%stressor       = tree%stressor
 		self%mort_marker    = tree%mort_marker
-		self%stressor       = tree%stressor
-		self%env_resp       = tree%env_resp
-		self%row            = tree%row
-		self%col            = tree%col
-		self%SpeciesData    = tree%SpeciesData
+        self%conifer        = tree%conifer
 
 	end subroutine copy_tree
 
-	!:.........................................................................:
-
-	subroutine update_tree(self, tree_species)
-		!a helper function required to have more flexible object structure
-		!Inputs/Outputs:
-		!	self:         tree instance
-		!Inputs:
-		!	tree_species: tree species
-
-		class(TreeData),   intent(inout) :: self
-		type(SpeciesData), intent(in)    :: tree_species
-
-		self%SpeciesData = tree_species
-
-	end subroutine update_tree
 
 	!:.........................................................................:
 
-    subroutine env_stress(self, shade, minstress, stressor)
-		!calculates the environmental stress on a tree (using Liebig's Law of
-		  !the Minimum, and sets what the most stressful factor is
-		!Author: Adrianna Foster 2016 v. 1.0
-		!Inputs/Outputs:
-		!	self:      tree instance
-		!Inputs:
-		!	shade:     tree growth response to shade (0-1)
-		!Outputs:
-		!	minstress: environmental stress (0-1)
-		!	stressor:  which factor was most stressful
-		!				1: temperature
-		!				2: drought
-		!				3: shade
-		!				4: permafrost (set later)
-		!				5: nutrients (set later)
+    subroutine env_stress(self, shade, fc_gdd, fc_drought, fc_perm, envstress, &
+        fc_nutr)
+        !
+        !  Calculates the environmental stress on a tree using Liebig's Law of
+        !   the Minimum, and sets what the most stressful factor is
+        !
+        !	stressor:  which factor was most stressful
+        !				1: temperature
+        !				2: drought
+        !				3: shade
+        !				4: permafrost
+        !				5: nutrients
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    01/01/16     A. C. Foster        Original Code
+        !    01/27/21     A. C. Foster        Updated to read in effects rather
+        !                                       than use attached species
+        !                                       attributes
 
-		class(TreeData), intent(inout) :: self
-		real,            intent(in)    :: shade
-		real,            intent(out)   :: minstress
-		integer,         intent(out)   :: stressor
-		real                           :: envstress
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout)        :: self       ! Tree object
+		real,            intent(in)           :: shade      ! Growth response to shading (0-1)
+        real,            intent(in)           :: fc_gdd     ! Growth response to growing degree-days (0-1)
+        real,            intent(in)           :: fc_drought ! Growth response to drought (0-1)
+        real,            intent(in)           :: fc_perm    ! Growth response to permafrost (0-1)
+		real,            intent(out)          :: envstress  ! Growth response to stress
+        real,            intent(in), optional :: fc_nutr
 
-		envstress = min(self%fc_degday, self%fc_drought, shade)
-		minstress = envstress
+        ! Data dictionary: local variables
+        real    :: minstress  ! Minimum stress from gdd, drought, shade, and (optionally) nutrients
+		integer :: stressor   ! Which factor had the highest impact
 
-		if (minstress .eq. self%fc_degday) then
-			stressor = 1
-		else if (minstress .eq. self%fc_drought) then
-			stressor = 2
-		else if (minstress .eq. shade) then
-			stressor = 3
-		endif
+        ! Get the minimum value
+        if (present(fc_nutr)) then
 
-		self%env_resp(1) = self%fc_degday
-		self%env_resp(2) = self%fc_drought
+            ! Calculate using nutrient stress
+            minstress = min(fc_gdd, fc_drought, shade, fc_nutr)
+
+            ! Find the most limiting factor
+            if (minstress .eq. fc_gdd) then
+                stressor = 1
+            else if (minstress .eq. fc_drought) then
+                stressor = 2
+            else if (minstress .eq. shade) then
+                stressor = 3
+            else if (minstress .eq. fc_nutr) then
+                stressor = 5
+            end if
+
+            if (minstress .gt. fc_perm) then
+                stressor = 4
+            endif
+
+            ! Output is minimum of shade, gdd, nutrient, and drought times flood
+            ! and permafrost
+            envstress = minstress*fc_perm
+
+        else
+            ! Don't use nutrient stress
+            ! This is so we can calculate the potential growth and then
+            ! decrease it based on available N
+            minstress = min(fc_gdd, fc_drought, shade)
+
+            ! Find the most limiting factor
+            if (minstress .eq. fc_gdd) then
+                stressor = 1
+            else if (minstress .eq. fc_drought) then
+                stressor = 2
+            else if (minstress .eq. shade) then
+                stressor = 3
+            end if
+
+            if (minstress .gt. fc_perm) then
+                stressor = 4
+            endif
+
+            ! Output is minimum of shade, gdd, and drought times flood and
+            ! permafrost
+            envstress = minstress*fc_perm
+
+        end if
+
+        ! Set the environmental stressors
+        self%stressor = stressor
+		self%env_resp(1) = fc_gdd
+		self%env_resp(2) = fc_drought
 		self%env_resp(3) = shade
+        self%env_resp(4) = fc_perm
+        if(present(fc_nutr)) self%env_resp(5) = fc_nutr
 
 	end subroutine env_stress
 
 	!:.........................................................................:
 
 	subroutine stem_shape(tree)
-		!calculates diameter at clear branch bole height (m)
-		!basal diameter = dhshape(0.0, h, dbh)
-		!diameter at canopy height = dhshape(hc, h, dbh)
-		!Note: mentioned above "beta" can be 1, 1.5 ,2 , 3, but right now beta
-		  !is set to 1 for all these routines.
-		!Inputs/Outputs:
-		!	self:      tree instance
+        !
+        !  Calculates diameter at clear branch bole height (cm)
+        !   Notes from original code:
+        !       basal diameter = dhshape(0.0, h, dbh)
+        !       diameter @ ccb = dhshape(hc, h, sdbh)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    10/10/20     A. C. Foster        Update for shrub forms
+        !
 
-		class(TreeData), intent(inout) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout) :: tree ! Tree object
 
-		real                           :: hc, h, dbh, dcbb
+        ! Data dictionary: local variables
+		real :: hcbb ! Clear branch bole height (m)
+        real :: ht   ! Tree height (m)
+        real :: dbh  ! Diameter at breast height (cm)
+        real :: dcbb ! Diameter at clear branch bole height (cm)
+        real :: beta ! Stem shape parameter
 
-		hc = tree%canopy_ht; h = tree%forska_ht; dbh = tree%diam_bht
+        hcbb = tree%canopy_ht
+        ht = tree%forska_ht
+        dbh = tree%diam_bht
+        beta = tree%spec_ptr%beta
 
-		if (h .le. hc .or. h .le. std_ht) then
+        if (ht .le. hcbb .or. ht .le. STD_HT) then
+            ! Just set to dbh
 			dcbb = dbh
 		else
-			dcbb = ((h - hc)/(h - std_ht))**(1.0/beta)*dbh
+            ! Calculate
+			dcbb = ((ht - hcbb)/(ht - STD_HT))**(1.0/beta)*dbh
 		end if
-
+        ! Set
 		tree%diam_canht = dcbb
+
 
 	end subroutine stem_shape
 
 	!:.........................................................................:
 
 	subroutine forska_height(tree)
-		!calculates total tree height using height-dbh relation equation from
-		  !Forska model
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs/Outputs:
-		!	tree: tree instance
+        !
+        !  Calculates total tree height (m)
+        !  Equation adapted from FORSKA model Leemans & Prentice 1989
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    10/10/20     A. C. Foster        Update for shrub forms
+        !
 
-		class(TreeData), intent(inout) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout) :: tree ! Tree object
 
-		real                           :: d, par, hmax
-		real                           :: delta_ht
+        ! Data dictionary: local variables
+		real :: dbh      ! Diameter at breast height (cm)
+        real :: s        ! Growth parameter
+        real :: hmax     ! Average maximum height (m)
+		real :: delta_ht ! Temporary variable
 
-		d = tree%diam_bht
-		hmax = tree%max_ht; par = tree%arfa_0
+        dbh = tree%diam_bht
+        hmax = tree%spec_ptr%max_ht
+        s = tree%spec_ptr%s
 
-		delta_ht = hmax - std_ht
-		tree%forska_ht = std_ht + delta_ht*(1.0 - exp(-(par*d/delta_ht)))
+        ! Tree or tree-like shrub form
+		delta_ht = hmax - STD_HT
+		tree%forska_ht = STD_HT + delta_ht*(1.0 - exp(-(s*dbh/delta_ht)))
 
 	end subroutine forska_height
 
 	!:.........................................................................:
 
 	subroutine biomass_c(tree)
-		!calculates trunk and branch biomass C (tonnes C) of tree
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs/Outputs:
-		!	tree: tree instance
+        !
+        !  Calculates aboveground woody biomass (tC)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    10/10/20     A. C. Foster        Update for shrub forms
+        !
 
-		class(TreeData), intent(inout) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout) :: tree ! Tree object
 
-		type (TreeData)                :: tree_0
-		real                           :: d, h, hc, hrt, bulk
-		real                           :: stembc, twigbc
-		real                           :: abovegr_c, root_c
+        ! Data dictionary: local varibles
+		real            :: dbh       ! Diameter at breask height (cm)
+        real            :: ht        ! Tree height (m)
+        real            :: hcbb      ! Clear branch bole height (m)
+        real            :: hrt       ! Rooting depth (m)
+        real            :: bulk      ! Wood bulk density (t/m3)
+		real            :: stembc    ! Stem biomass (tC)
+        real            :: branchbc  ! Branch biomass (tC)
+		real            :: abovegr_c ! Aboveground woody biomass (tC)
+        real            :: root_c    ! Root biomass (tC)
 
-		d = tree%diam_bht; h = tree%forska_ht; hc = tree%canopy_ht
-		hrt = tree%rootdepth; bulk = tree%wood_bulk_dens
+        ht = tree%forska_ht
+        hrt = tree%spec_ptr%rootdepth
 
-		call copy_tree(tree_0, tree)
-		tree_0%canopy_ht = 0.0
-
+        ! Calculate diameter at cbb
 		call stem_shape(tree)
-		call stem_shape(tree_0)
 
-		stembc = stem_biomass_c(tree_0)
-		twigbc = twig_biomass_c(tree)
+        ! Calculate stem biomass (tC)
+		stembc   = stem_biomass_c(tree)
 
-		abovegr_c = stembc + twigbc
-		root_c    = stembc*hrt/h + twigbc/2.0
+        ! Calculate branch biomass (tC)
+		branchbc = branch_biomass_c(tree)
 
-		tree%biomC = (abovegr_c + root_c)
-		tree%stemC = stembc
-		tree%twigC = twigbc
-		tree%rootC = root_c
+        ! Aboveground woody biomass is branch + stem
+        abovegr_c = stembc + branchbc
+
+        ! Calculate root biomass (tC)
+        root_c    = stembc*hrt/ht + branchbc
+
+        ! Set values
+        tree%biomC = abovegr_c + root_c
+        tree%stemC = stembc
+        tree%branchC = branchbc
+        tree%rootC = root_c
+
 
 	end subroutine biomass_c
 
 	!:.........................................................................:
 
 	subroutine biomass_n(tree)
-		!calculates stem and branch N biomass
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs/Outputs:
-		!	tree: tree instance
+        !
+        !  Calculates stem and branch N biomass (tN)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !
 
-		class(TreeData), intent(inout) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout) :: tree ! Tree object
 
-		tree%biomN = tree%biomC/stem_c_n
+        ! Use stem C:N ratio
+		tree%biomN = tree%biomC/STEM_C_N
 
 	end subroutine biomass_n
 
 	!:.........................................................................:
 
 	subroutine leaf_biomass_c(tree)
-		!calculates leaf biomass of tree (tonnes C)
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs/Outputs:
-		!	tree: tree instance
+        !
+        !  Calculates leaf biomass (tC)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
 
-		class(TreeData), intent(inout) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout) :: tree ! Tree object
 
-		tree%leaf_bm = lai_biomass_c(tree)*tree%leafarea_c*2.0
+		tree%leaf_bm = leaf_area(tree)*tree%spec_ptr%leafarea_c*2.0
 
 	end subroutine leaf_biomass_c
 
 	!:.........................................................................:
 
-	function lai_biomass_c(tree)
-		!calculates leaf area of tree
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs:
-		!	tree: tree instance
+	real function leaf_area(tree)
+        !
+        !  Calculates leaf area of a tree (m2)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
 
-		class(TreeData), intent(in) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(in) :: tree ! Tree object
 
-		real                        :: lai_biomass_c
-		real                        :: dc, leafd_a
+        ! Data dictionary: local variables
+		real :: dcbb    ! Diameter at clear branch bole height
+        real :: leafd_a ! Scalar parameter for DCBB:leaf area relationship
 
-		dc = tree%diam_canht; leafd_a = tree%leafdiam_a
-		lai_biomass_c = dc*dc*leafd_a
+        dcbb = tree%diam_canht
+        leafd_a = tree%spec_ptr%leafdiam_a
 
-	end function lai_biomass_c
+		leaf_area = (dcbb*dcbb)*leafd_a
+
+	end function leaf_area
 
 	!:.........................................................................:
 
 	subroutine age_survival(tree, a_survive)
-		!death check by age. Trees can reach life sapn (max age) as a
-		  !probability of 1% ('often seen'), 0.1% ('some survive'), or 0.01%
-		  !('few seen'), as set up by input parameter
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs:
-		!	tree:      tree instance
-		!Outputs:
-		!	a_survive: does tree survive this check?
+        !
+        !  Random death check. Trees can reach maximum age as a probability of
+        !  1% ('often seen'), 0.1% ('some survive'), or 0.01% ('few seen'), as
+        !  set by input age_tol parameter (1-3)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
 
-		class(TreeData), intent(in)  :: tree
-		logical,         intent(out) :: a_survive
+        ! Data dictionary: constants
+        ! Age-tolerance related parameters
+        ! 1% ---> 4.605  0.1% ---> 6.908  0.01% ---> 11.5129
+        real, dimension(3), parameter :: CHECK = [4.605, 6.908, 11.51]
 
-		integer                      :: k
-		real                         :: agemax
-		real                         :: rand_val
-		real, dimension(3)           :: check
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(in)  :: tree      ! Tree object
+		logical,         intent(out) :: a_survive ! Does tree survive?
 
-		data check /4.605, 6.908, 11.51/
-		!1% ---> 4.605  0.1% ---> 6.908   0.01% ---> 11.5129
+        ! Data dictionary: local variables
+		integer :: k        ! Probability of surviving to max age (1-3; 3 = least likely)
+		real    :: agemax   ! Average maximum age (years)
+		real    :: rand_val ! Random number (uniform)
 
-		k = tree%age_tol
-		agemax = tree%max_age
+		k = tree%spec_ptr%age_tol
+		agemax = tree%spec_ptr%max_age
 
+        ! Get random uniform between 0 and 1
 		rand_val = urand()
-		if (rand_val .lt. (check(k)/agemax)) then
+
+        ! Check against parameter
+		if (rand_val .lt. CHECK(k)/agemax) then
 			a_survive = .false.
 		else
 			a_survive = .true.
@@ -357,84 +475,84 @@ contains
 	!:.........................................................................:
 
 	subroutine growth_survival(tree, g_survive)
-		!death check by growth insufficiency
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs:
-		!	tree:       tree instance
-		!Outputs:
-		!	g_survive:  does tree survive growth check?
+        !
+        !  Death check by low growth stress.
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
 
-		class(TreeData), intent(in) :: tree
-		logical, intent(out)        :: g_survive
+        ! Data dictionary: constants
+        ! Values to check against (depends on stress_tol parameter)
+        real, dimension(5), parameter :: CHECK = [0.21, 0.24, 0.27, 0.30, 0.33]
 
-		integer                     :: k
-		real                        :: rand_val
-		real, dimension(5)          :: check
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(in) :: tree      ! Tree object
+		logical, intent(out)        :: g_survive ! Does tree survive?
 
-		data check /0.21, 0.24, 0.27, 0.30, 0.33/
+        ! Data dictionary: local variables
+		integer :: k        ! Relative stress tolerance (1-5; 5 = least tolerant)
+		real    :: rand_val ! Random value (uniform)
 
-		k = tree%stress_tol
+		k = tree%spec_ptr%stress_tol
+
+        ! Get random uniform between 0 and 1.0
 		rand_val = urand()
 
-		if (tree%mort_marker .and. rand_val .lt. check(k)) then
-			g_survive=.false.
+        ! Check against parameter
+		if (tree%mort_marker .and. rand_val .lt. CHECK(k)) then
+			g_survive = .false.
 		else
-			g_survive=.true.
+			g_survive = .true.
 		end if
 
 	end subroutine growth_survival
 
-	!:.........................................................................:
+    subroutine fire_survival(tree, av_fuel, f_survive)
+        !
+        !  Calculates survival of a tree from a fire event
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/10/18     A. C. Foster         Original Code
 
-	subroutine fire_survival(tree, av_fuel, f_survive)
-		!calculates survival of tree from fire event
-		!Authors: Adrianna Foster & Jacquelyn Shuman 2015 v. 1.0
-		!Changelog:
-		!	Adrianna Foster updated to 1.1, updated to equations from
-		!		Shumacher et al. 2007
-		!Inputs/Outputs:
-		!	tree:       tree instance
-		!Inputs:
-		!	av_fuel:    available fuel for burning (t/ha)
-		!Outputs:
-		!	f_survive:  does tree survive fire?
+        ! Data dictionary: constants
+        real, parameter :: CK1 = 0.21111
+        real, parameter :: CK2 = -0.00445
 
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout) :: tree      ! Tree object
+		real,            intent(in)    :: av_fuel   ! Available fuel for burning (t/ha)
+		logical,         intent(out)   :: f_survive ! Did tree survive?
 
-		class(TreeData), intent(inout) :: tree
-		real,            intent(in)    :: av_fuel
-		logical,         intent(out)   :: f_survive
+        ! Data dictionary: local variables
+		real :: pfire    ! Probability of fire mortality
+        real :: dbh_eff  ! Effective DBH (cm)
+		real :: rand_val ! Random uniform
 
-		logical                        :: fkill
-		real                           :: Pfire, dbh_eff
-		real                           :: rand_val
-		real, parameter                :: BT = 0.063
-		real, parameter                :: ck1 = 0.21111
-		real, parameter                :: ck2 = -0.00445
-
-		if (tree%diam_bht .ge. 40.0) then
+        ! Get effective DBH (cm)
+		if (tree%diam_bht >= 40.0) then
 			dbh_eff = 40.0
 		else
 			dbh_eff = tree%diam_bht
 		end if
 
-		tree%CK = min(100.0, 100.0*(ck1 + ck2*dbh_eff)*av_fuel)
-		if (tree%CK .le. 0.0001) tree%CK = 0.0
+        ! Calculate crown scorch (%)
+		tree%CK = min(100.0, 100.0*(CK1 + CK2*dbh_eff)*av_fuel)
+		if (tree%CK <= epsilon(1.0)) tree%CK = 0.0
 
-
-		Pfire = 1/(1 + exp(-1.466 +                                            &
-		                1.91*(tree%bark_thick*tree%diam_bht) -                 &
-		                0.1775*((tree%bark_thick*tree%diam_bht)**2) -          &
+        ! Fire probability
+		pfire = 1/(1 + exp(-1.466 +                                            &
+		                1.91*(tree%spec_ptr%bark_thick*tree%diam_bht) -        &
+		                0.1775*((tree%spec_ptr%bark_thick*tree%diam_bht)**2) - &
 		                0.000541*tree%CK**2))
 
+        ! Check for fire mortality
 		rand_val = urand()
-
 		if (rand_val .lt. Pfire) then
-			fkill = .true.
-		else
-			fkill = .false.
-		endif
-
-		if (fkill .eq. .true.) then
 			f_survive = .false.
 		else
 			f_survive = .true.
@@ -444,181 +562,235 @@ contains
 
 	!:.........................................................................:
 
-	subroutine wind_survival(tree, wcat, w_survive)
-		!calculates mortality of tree from a windthrow event
-		!Author: Adrianna Foster 2015 v. 1.0
-		!Inputs:
-		!	tree:       tree instance
-		!	wcat:       wind intensity category
-		!Outputs:
-		!	w_survive:  does tree survive windthrow?
+	subroutine wind_survival(tree, w_survive)
+        !
+        !  Calculates survival from a windthrow event
+        !  Adapted from Rich et al. 2007 Journal of Ecology 95:1261-1273
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    08/01/15     A. C. Foster        Original Code
 
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(in)  :: tree      ! Tree object
+		logical,         intent(out) :: w_survive ! Does tree survive?
 
-		class(TreeData), intent(in)  :: tree
-		real,            intent(in)  :: wcat
-		logical,         intent(out) :: w_survive
+        ! Data dictionary: local variables
+		real :: logit    ! Temporary variable
+        real :: pwind    ! Probability of mortality from windthrow
+        real :: rand_val ! Random number (uniform)
 
-		real                         :: logit, pwind, rand_val
+        ! Probability of mortality from windthrow
+        ! Equation from Rich et al. (2007)
+		logit = 0.75*log(tree%diam_bht)
+		pwind = 1.0/(1.0+exp(-logit))
 
-
-		!from Rich et al 2007 J. of Ecol.
-		if (wcat .ge. 0.1) then
-			logit = 0.75*log(tree%diam_bht)
-			pwind = 1.0/(1.0+exp(-logit))
-			rand_val=urand()
-			if (rand_val .lt. pwind) then
-				w_survive = .false.
-			else
-				w_survive = .true.
-			endif
+        ! Check for survival
+		rand_val=urand()
+		if (rand_val .lt. pwind) then
+			w_survive = .false.
 		else
 			w_survive = .true.
-		end if
+		endif
+
 
 	end subroutine wind_survival
 
-	!:.........................................................................:
+    !:.........................................................................:
 
 	subroutine max_growth(tree)
-		!calculates optimal DBH increment growth of tree
-		!!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs/Outputs:
-		!	tree: tree instance
+        !
+        !  Calculates maximum DBH increment growth given "optimal" environmental
+        !   conditions
+        !  Based on equation from Botkin et al. 1972 Journal of Ecology 60(3):849
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    10/10/20     A. C. Foster        Update for shrub forms
 
-		class(TreeData), intent(inout) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(inout) :: tree ! Tree object
 
-		real                           :: d, dc, h, dm, hm, g, arfa0
-		real                           :: beginning
+		real :: dbh  ! Diameter at breast height (cm)
+        real :: ht   ! Tree height (m)
+        real :: dmax ! Average maximum dbh (cm)
+        real :: hmax ! Average maximum height (m)
+        real :: g    ! Growth parameter
+        real :: s    ! Growth parameter
+		real :: temp ! Temporary variable
 
-		dc = tree%diam_canht; d = tree%diam_bht ;h = tree%forska_ht
-		dm = tree%max_diam; hm = tree%max_ht; g = tree%g
-		arfa0 = tree%arfa_0
+        dbh = tree%diam_bht
+        ht = tree%forska_ht
+        dmax = tree%spec_ptr%max_diam
+        hmax = tree%spec_ptr%max_ht
+        g = tree%spec_ptr%g
+        s = tree%spec_ptr%s
 
-		beginning = arfa0*exp(-arfa0*d/(hm - std_ht))*d
-		tree%diam_max = g*d*(1.0 - d*h/dm/hm)/(2.0*h + beginning)
+        temp = s*exp(-s*dbh/(hmax - STD_HT))*dbh
+		tree%diam_opt = g*dbh*(1.0 - dbh*ht/dmax/hmax)/(2.0*ht + temp)
 
 	end subroutine max_growth
 
 	!:.........................................................................:
 
-	function stem_biomass_c(tree)
-		!calculates stem biomass C (tonnes C) of tree
-		!note: root stem biomass C = bstemc(bd,1.0,bulk_density)
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs:
-		!	tree: tree instance
+	real function stem_biomass_c(tree)
+        !
+        !  Calculates stem biomass (tC)
+        !   Notes from previous model version:
+        !       bstemC = bc(bd, 1.0, bulk_density)
+        !       Here bd was "basal diameter" - diameter at clear branch bole
+        !       height, but for a clear branch bole height of 0.0, so it was
+        !       equal to dbh
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    01/28/21     A. C. Foster        Update to use dbh of tree, without
+        !                                       setting cbb to 0.0
+        !
 
-		class(TreeData), intent(in) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(in) :: tree ! Tree object
 
-		real                        :: stem_biomass_c
-		real                        :: bd, h, bulk_density
-		real                        :: yxd
+		real :: dbh          ! Diameter at breast height (cm)
+        real :: ht           ! Tree height (m)
+        real :: bulk_density ! Wood bulk density (t/m3)
+		real :: beta         ! Stem shape parameter
+        real :: temp         ! Temporary variable
 
-		!bd is basal diameter but when we call this routine we use an object
-		  !with a "canopy height" of zero.
-		bd = tree%diam_canht; h = tree%forska_ht
-		bulk_density = tree%wood_bulk_dens
+		dbh = tree%diam_bht
+        ht = tree%forska_ht
+		bulk_density = tree%spec_ptr%wood_bulk_dens
+        beta = tree%spec_ptr%beta
 
-		yxd = tC*bulk_density*beta/(beta + 2.0)
-		stem_biomass_c = yxd*bd*bd*h*0.90
+		temp = 1E-4*PI*0.25*B_TO_C*bulk_density*beta/(beta + 2.0)
+		stem_biomass_c = temp*dbh*dbh*ht
 
 	end function stem_biomass_c
 
 	!:.........................................................................:
 
-	function twig_biomass_c(tree)
-		!calculates twig C biomass of tree
-		!Author: Yan Xiaodong & Hank Shugart 2005 v. 1.0
-		!Inputs:
-		!	tree: tree instance
+	real function branch_biomass_c(tree)
+        !
+        !  Calculates branch biomass of a tree (tC)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !
 
-		class(TreeData), intent(in) :: tree
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(in) :: tree ! Tree object
 
-		real                        :: twig_biomass_c
-		real                        :: dc, hc, h, bulk_density
-		real                        :: yxd
+        ! Data dictionary: local variables
+		real :: dcbb         ! Diameter at clear branch bole height (cm)
+        real :: hcbb         ! Clear branch bole height (m)
+        real :: ht           ! Height (m)
+        real :: bulk_density ! Wood bulk density (t/m3)
+		real :: beta         ! Stem shape parameter
+        real :: temp         ! Temporary variable
 
-		dc = tree%diam_canht; hc = tree%canopy_ht; h = tree%forska_ht
-		bulk_density = tree%wood_bulk_dens
+		dcbb = tree%diam_canht
+        hcbb = tree%canopy_ht
+        ht = tree%forska_ht
+		bulk_density = tree%spec_ptr%wood_bulk_dens
+        beta = tree%spec_ptr%beta
 
-		yxd = tC*bulk_density*(2.0/(beta + 2.0)-0.33)
-		twig_biomass_c = yxd*dc*dc*(h-hc)
+		temp = 1E-4*PI*0.25*B_TO_C*bulk_density*(2.0/(beta + 2.0)-0.33)
+		branch_biomass_c = temp*dcbb*dcbb*(ht-hcbb)
 
-	end function twig_biomass_c
+	end function branch_biomass_c
 
 	!:.........................................................................:
 
 	subroutine get_diam_category(self, diam_category)
-		!gets the diameter class of the tree
-		!Author: Katherine Holcomb 2012 v. 1.0
-		!Inputs:
-		!	self:           tree instance
-		!Outputs:
-		!	diam_category:  list with 1 in the correct DBH category
+        !
+        !  Gets the diameter class of a tree
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    07/27/12     K. Holcomb          Original code
+        !    01/28/21     A. C. Foster        Updated to use parameters for DBH
+        !                                       bins
+        !
 
-		class(TreeData),         intent(in)  :: self
-		integer, dimension(NHC), intent(out) :: diam_category
+        ! Data dictionary: calling arguments
+		class(TreeData),         intent(in)  :: self          ! Tree object
+		integer, dimension(NHC), intent(out) :: diam_category ! List with 1 in correct bin
 
-		real                                 :: dm
+        ! Data dictionary: local variables
+		real    :: dbh ! Diameter at breast height (cm)
+        integer :: i   ! Looping index
 
-		dm = self%diam_bht
+		dbh = self%diam_bht
+
+        ! Reset to 0
 		diam_category = 0
 
-		if (dm >= 0.5 .and. dm <= 5.0) then
-			diam_category(1) = 1
-		else if (dm > 5.0 .and. dm <= 10.0) then
-			diam_category(2) = 1
-		else if (dm > 10.0 .and. dm <= 20.0) then
-			diam_category(3) = 1
-		else if (dm > 20.0 .and. dm <= 30.0) then
-			diam_category(4) = 1
-		else if (dm > 30.0 .and. dm <= 40.0) then
-			diam_category(5) = 1
-		else if (dm > 40.0 .and. dm <= 50.0) then
-			diam_category(6) = 1
-		else if (dm > 50.0 .and. dm <= 60.0) then
-			diam_category(7) = 1
-		else if (dm > 60.0 .and. dm <=70.0) then
-			diam_category(8) = 1
-		else if (dm > 70.0 .and. dm <= 80.0) then
-			diam_category(9) = 1
-		else if (dm > 80.0 .and. dm <= 90.0) then
-			diam_category(10) = 1
-		else if (dm > 90.0) then
-			diam_category(11) = 1
-		endif
+        ! Find correct bin
+        do i = 1, NHC - 1
+            if (dbh > DBC_MIN(i) .and. dbh <= DBC_MAX(i)) then
+                diam_category(i) = 1
+            end if
+        end do
+        if (dbh > DBC_MIN(NHC)) then
+            diam_category(NHC) = 1
+        end if
 
 	end subroutine get_diam_category
 
 	!:.........................................................................:
 
 	subroutine write_tree_csv(self, tree_unit)
+        !
+        !  Helper subroutine for writing tree-level data to the output Tree file
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/16     A. C. Foster        Original code
+        !
+
 		use csv_file
-		!heper function for writing tree-level data to Tree_Data.csv
-		!Author: Adrianna Foster 2016 v. 1.0
-		!Inputs:
-		!	self:       tree instance
-		!	tree_unit:  file unit number for Tree_Data.csv
 
-		class(TreeData), intent(in) :: self
-		integer,         intent(in) :: tree_unit
+        ! Data dictionary: calling arguments
+		class(TreeData), intent(in) :: self      ! Tree object
+		integer,         intent(in) :: tree_unit ! Unit number for output tree file
 
-		call csv_write(tree_unit, trim(adjustl(self%genus_name)), .false.)
-		call csv_write(tree_unit, self%unique_id, .false.)
+        ! Data dictionary: local variables
+        real    :: tla ! Leaf area (m2)
+        integer :: i   ! Looping index
+
+        ! Get leaf area
+        tla = leaf_area(self)
+
+        ! Write out attributes
+		call csv_write(tree_unit, trim(adjustl(self%spec_ptr%genus_name)),     &
+            .false.)
+		call csv_write(tree_unit, self%spec_ptr%unique_id, .false.)
 		call csv_write(tree_unit, self%row, .false.)
 		call csv_write(tree_unit, self%col, .false.)
         call csv_write(tree_unit, self%tree_age, .false.)
 		call csv_write(tree_unit, self%diam_bht, .false.)
+        call csv_write(tree_unit, self%diam_canht, .false.)
 		call csv_write(tree_unit, self%forska_ht, .false.)
 		call csv_write(tree_unit, self%canopy_ht, .false.)
 		call csv_write(tree_unit, self%leaf_bm, .false.)
+        call csv_write(tree_unit, tla, .false.)
 		call csv_write(tree_unit, self%biomC, .false.)
-        call csv_write(tree_unit, self%env_resp(1), .false.)
-        call csv_write(tree_unit, self%env_resp(2), .false.)
-        call csv_write(tree_unit, self%env_resp(3), .false.)
-        call csv_write(tree_unit, self%env_resp(4), .false.)
-        call csv_write(tree_unit, self%env_resp(5), .false.)
-        call csv_write(tree_unit, self%env_resp(6), .true.)
+        do i = 1, FC_NUM-1
+            call csv_write(tree_unit, self%env_resp(i), .false.)
+        end do
+        call csv_write(tree_unit, self%env_resp(FC_NUM), .true.)
 
 	end subroutine write_tree_csv
 

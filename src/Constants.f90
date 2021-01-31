@@ -2,93 +2,90 @@ module Constants
 
 !*******************************************************************************
   !
-  !This module sets up constants used throughout UVAFME
+  ! This module sets up constants used throughout UVAFME
   !
 !*******************************************************************************
 
 
-  !code identifiers
-  character(len = 6)   :: codename = 'UVAFME'
-  character(len = 4)   :: version_id = '2018'
-  character(len = 10)  :: code_id
+    ! Code identifiers
+    character(len = 6)  :: CODENAME = 'UVAFME' ! Model name
+    character(len = 4)  :: VERSION_ID = '2018' ! Model version
+    character(len = 10) :: CODE_ID             ! Model name + version
 
-  !global constants
-  real, parameter      :: pi = 4.0*atan(1.0)
-  real, parameter      :: deg2rad = pi/180.0
+    ! Values for invalid/missing data
+    real,    parameter :: RNVALID = -999.0 ! Real invalid
+    integer, parameter :: INVALID = -999   ! Integer invalid
 
-  !characters and files
-  integer, parameter   :: MAX_NLEN = 30
-  integer, parameter   :: MAX_FILE = 132
-  integer, parameter   :: MAX_LINE = 256
-  integer, parameter   :: MAX_LONG_LINE = 1000
-  integer, parameter   :: MAX_DIR = 132
-  integer, parameter   :: MAX_CHAR = 80
-  integer, parameter   :: MAX_FIELDS = 100
+    ! Unit conversions
+    real, parameter :: PI = 4.0*atan(1.0)   ! Pi (3.1415..)
+    real, parameter :: DEG2RAD = PI/180.0   ! Convert from degrees to radians
+    real, parameter :: M_TO_CM = 100.0      ! Convert from m to cm
+    real, parameter :: CM_TO_M = 0.01       ! Convert from cm to m
+    real, parameter :: MM_TO_CM = 0.1       ! Convert from mm to cm
+    real, parameter :: HEC_TO_M2 = 10000.0  ! Convert from hectares to m2
+    real, parameter :: M2_TO_HEC = 0.0001   ! Convert from m2 to hectares
+    real, parameter :: T_TO_KG = 1000.0     ! Convert from tonnes to kg
+    real, parameter :: KG_TO_T = 0.001      ! Convert from kg to tonnes
+    real, parameter :: B_TO_C = 0.45        ! Convert from dry biomass to Carbon
+    real, parameter :: H2O_D = 1000.0       ! Density of water
 
-  !unit conversions
-  real, parameter      :: m_to_cm = 100.0
-  real, parameter      :: hec_to_m2 = 10000
-  real, parameter      :: m2_to_hec = 0.0001
-  real, parameter      :: mm_to_cm = 0.1
+    ! Date-related constants
+    integer, parameter ::  NTEMPS = 12         ! Months in a year
+    integer, parameter ::  DAYS_PER_YEAR = 365 ! Days in a year
 
-  !radiation constants
+    ! Characters and files
+    integer, parameter :: MAX_NLEN = 30        ! Maximum length for names
+    integer, parameter :: MAX_FILE = 132       ! Maximum file name length
+    integer, parameter :: MAX_LINE = 256       ! Maximum line for file
+    integer, parameter :: MAX_LONG_LINE = 1000 ! Maximum length of line (headers)
+    integer, parameter :: MAX_DIR = 132        ! Maximum directory name length
+    integer, parameter :: MAX_CHAR = 80        ! Maximum length for messages
+    integer, parameter :: MAX_PATH = 256       ! Maximum path length
 
-  !solar radiation model parameters
-  real, parameter        :: b = 0.017214
-  real, parameter        :: As = 0.409
-  real, parameter        :: Ac = 0.034
-  real, parameter        :: phase = -1.39
-  !radiation latitude dependencies
-  real, parameter        :: Amp = 38.38176
-  real, parameter        :: dl_omega = 7.639437
-  real, parameter        :: exrad_coef = 0.0820
+    ! Array-related constants
+    integer, parameter :: LIT_LEVS = 20 ! Number of litter classes
+    integer, parameter :: M_TYPES = 8   ! Number of mortality types
+    integer, parameter :: FC_NUM = 5    ! Number of environmental stressors
+    integer, parameter :: IROOT = 13    ! Array location of roots in litter array
+    integer, parameter :: ITW = 16      ! Array location of twigs in litter array
+    integer, parameter :: ISBR = 17     ! Array location of small branches in litter array
+    integer, parameter :: ILBR = 18     ! Array location of large branches in litter array
+    integer, parameter :: ISBL = 14     ! Array location of small boles in litter array
+    integer, parameter :: ILBL = 15     ! Array location of large boles in litter array
+    integer, parameter :: IFIRE = 7     ! Array location of burned trees
+    integer, parameter :: IWIND = 8     ! Array location of wind-killed trees
 
-  !Hargreaves evaporation constants
-  real, parameter        :: H_coeff = 0.000093876
-  real, parameter        :: H_addon = 17.8
+    ! Tree-related constants
+    real,    parameter :: STD_HT = 1.3         ! Standard height for DBH measurements (m)
+    integer, parameter :: NHC = 11             ! Number of DBH categories
+    real               :: CON_LEAF_C_N = 60.0  ! Conifer leaf C:N ratio
+    real               :: DEC_LEAF_C_N = 40.0  ! Deciduous leaf C:N ratio
+    real               :: STEM_C_N = 450.0     ! Stem C:N ratio
+    real               :: CON_LEAF_RATIO = 0.3 ! Conifer to deciduous leaf area ratio
 
-  !climate-related constants
-  integer, parameter     ::  NTEMPS = 12
-  integer, parameter     ::  max_days_per_year = 366
-  integer, parameter     ::  days_per_year = 365
+    ! DBH bins (minimum)
+    real, dimension(NHC),   parameter :: DBC_MIN = [0.5, 5.0, 10.0, 20.0,      &
+        30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0]
 
-  !precipitation nitrogen content
-  real, parameter        :: prcp_n = 0.00002
+    ! DBH bins (maximum)
+    real, dimension(NHC-1), parameter :: DBC_MAX = [5.0, 10.0, 20.0, 30.0,     &
+        40.0, 50.0, 60.0, 70.0, 80.0, 90.0]
 
-  !global tree attributes
+    ! Other constants
+    real, parameter :: PRCP_N = 0.00002     ! N deposition from rainfall (tN/cmrain)
+    real, parameter :: SNOW_DENS = 217.0    ! Snow density (kg/m3) (Sturm et al. 2010)
+    real, parameter :: BULK_LITTER = 44.1   ! Litter bulk density (kg/m3)
+    real, parameter :: BULK_DUFF = 55.3     ! Duff bulk density (kg/m3)
+    real, parameter :: BULK_MOSS = 5.2      ! Moss bulk density (kg/m3)
+    real, parameter :: BULK_CON = 28.6      ! Conifer needles bulk density (kg/m3)
+    real, parameter :: BULK_DEC = 100.0     ! Deciduous leaves bulk density (kg/m3)
 
-  !standard for DBH measurements
-  real, parameter        :: std_ht = 1.3
-  !number of DBH categories
-  integer, parameter     :: NHC = 11
-  integer, parameter     :: n_indbh = 22
-  !conifer and deciduous leaf C:N ratio
-  real                   :: con_leaf_c_n = 60.0
-  real                   :: dec_leaf_c_n = 40.0
-  !stem C:N ratio
-  real                   :: stem_c_n = 450.0
-  !conifer to deciduous leaf area ratio
-  real                   :: con_leaf_ratio = 0.3
+    ! Percent of crown woody biomass in twigs (1), small branches (2),
+    ! and large branches (3) -- Thonicke et al. (2010)
+    real, dimension(3), parameter :: PERC_BRANCHES = [0.136, 0.223, 0.634]
 
-  !snow parameters
-  real, parameter        :: snow_dens = 217.0 !Sturm et al. 2010
-
-  !forest fuels and litter parameters
-  real, parameter        :: tfc1 = 0.8
-  real, parameter        :: tfc2 = 0.2
-  real, parameter        :: bfc = 0.4
-  real, parameter        :: bulk_l = 44.1
-  real, parameter        :: bulk_duff = 76.94
-  real, parameter        :: moss_bulk = 60.0
-  real, parameter        :: con_bulk = 28.6
-  real, parameter        :: dec_bulk = 100.0
-  real, parameter        :: hum_bulk = 55.3
-
-  !organic layer effects on regeneration
-  real, dimension(3)     :: org_gf
-
-  !data org_gf /-7.4, -22.4, -52.4/
-  data org_gf /-7.4, -18.4, -32.4/
-
+    ! Parameter for effect of organic layer depth on regeneration
+    ! Depends on org_tol
+    real, dimension(3), parameter :: ORG_GF = [-2.4, -25.4, -50.4]
 
 end module Constants

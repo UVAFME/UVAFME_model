@@ -1,5 +1,11 @@
 module Output
 
+!*******************************************************************************
+  !
+  ! This module initializes and writes data to output files.
+  !
+!*******************************************************************************
+
   use Constants
   use Parameters
   use Tree
@@ -10,21 +16,14 @@ module Output
 
   implicit none
 
-!*******************************************************************************
-  !
-  !This module initializes and writes data to output files.
-  !
-!*******************************************************************************
-
-	!plot-scale unit adjustments
-	real  :: plotscale, plotadj, plotrenorm
-
 contains
 
 	!:.........................................................................:
 
 	subroutine initialize_outputFiles()
-		!opens output files and writes their headers
+        !
+        !  Opens output files and writes their headers
+        !
 
 		call open_outputFiles
 		call write_headers()
@@ -33,488 +32,387 @@ contains
 
 	!:.........................................................................:
 
-	subroutine total_plot_values(site, maxcells, year)
-		!writes across-species data to Total_Plot_Values.csv file
-		!Authors: Adrianna Foster and Jacquelyn Shuman 2014, v. 1.0
-		!Inputs:
-		!	site:     site instance
-		!	maxcells: maximum cells per plot (maxcells*maxcells = max trees)
-		!	year:     simulation year
+	subroutine total_plot_values(site, year)
+        !
+        !  Writes across-species data to an output file
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/14     A. C. Foster
+        !                 J. K. Shuman        Original Code
 
-		type(SiteData),   intent(in)       :: site
-		integer,          intent(in)       :: maxcells
-		integer,          intent(in)       :: year
+        ! Data dictionary: constants
+        integer, parameter :: LAI_BINS = 12 ! Number of LAI bins
 
-		real, dimension(:, :), allocatable :: tree_ht, tree_biom
-		real, dimension(:, :), allocatable :: tree_basal_area, tree_age
-		real, dimension(site%numplots)     :: LH, basal_ar, WA
-		real, dimension(site%numplots)     :: plbiomc, stems, plstandage
-		real, dimension(site%numplots)     :: plmaxheight, sm_stems, med_stems
-		real, dimension(site%numplots)     :: n_1, n_2, n_3, lg_stems
-		real, dimension(site%numplots, 6)  :: envresp_1, envresp_2
-		real, dimension(site%numplots, 6)  :: envresp_3
-		real, dimension(site%numplots, 6)  :: scounts_1, scounts_2
-		real, dimension(site%numplots, 6)  :: scounts_3
-		real, dimension(12)                :: site_lai
-		real, dimension(8)                 :: mort_markers
-		real, dimension(6)                 :: envresp_1mn, envresp_2mn
-		real, dimension(6)                 :: envresp_3mn, envresp_1sd
-		real, dimension(6)                 :: envresp_2sd, envresp_3sd
-		real, dimension(6)                 :: scounts_1mn, scounts_2mn
-		real, dimension(6)                 :: scounts_3mn, scounts_1sd
-		real, dimension(6)                 :: scounts_2sd, scounts_3sd
-		real                               :: LH_num, LH_denom
-		real                               :: WA_num, WA_denom
-		real                               :: LH_mean, LH_std
-		real                               :: Totalbiomc, Totalbiomc_std
-		real                               :: Totalbasal, Totalbasal_std
-		real                               :: Totalstems, Totalstems_std
-		real                               :: Maxheight, Maxheight_std
-		real                               :: Avg_age, Avg_age_std
-		real                               :: WA_mean, WA_std
-        real                               :: lg_stems_mn, lg_stems_std
-        real                               :: sm_stems_mn, sm_stems_std
-        real                               :: med_stems_mn, med_stems_std
-	    integer                            :: ip, it, m, stress
+        ! Data dictionary: calling arguments
+		type(SiteData), intent(in) :: site ! Site object
+		integer,        intent(in) :: year ! Year of simulation
 
-		!for converting to per ha
-		plotscale = hec_to_m2/plotsize
+        ! Data dictionary: local variables
+		real, dimension(:,:), allocatable      :: ht           ! Tree height (m)
+		real, dimension(:,:), allocatable      :: basal_area   ! Tree basal area (m2)
+        real, dimension(:,:), allocatable      :: age          ! Tree age (years)
+        real, dimension(site%numplots, FC_NUM) :: envresp_1    ! Growth response for trees < 10 m height (0-1)
+        real, dimension(site%numplots, FC_NUM) :: envresp_2    ! Growth response for trees >= 10 m and < 20 m height (0-1)
+        real, dimension(site%numplots, FC_NUM) :: envresp_3    ! Growth response for trees >= 20 m height (0-1)
+        real, dimension(site%numplots)         :: loreys_ht    ! Lorey's Height (m)
+        real, dimension(site%numplots)         :: plbasal_area ! Plot-level basal area (m2)
+        real, dimension(site%numplots)         :: plbiomC      ! Plot-level biomass (tC)
+        real, dimension(site%numplots)         :: plstems      ! Plot-level stem density
+        real, dimension(site%numplots)         :: plstandage   ! Plot stand age (years)
+        real, dimension(site%numplots)         :: plmaxheight  ! Plot-level maximum height (m)
+        real, dimension(site%numplots)         :: sm_stems     ! Plot-level stems <= 5 cm DBH (#)
+        real, dimension(site%numplots)         :: med_stems    ! Plot-level stems > 5 cm and <= 20 cm DBH (#)
+        real, dimension(site%numplots)         :: lg_stems     ! Plot-level stems > 20 cm DBH (#)
+        real, dimension(site%numplots)         :: n_1          ! Trees < 10 m height (#)
+        real, dimension(site%numplots)         :: n_2          ! Trees >= 10 m and < 20 m height (#)
+        real, dimension(site%numplots)         :: n_3          ! Trees >= 20 m height (#)
+        real, dimension(LAI_BINS)              :: site_lai     ! LAI binned by height (m2/m2)
+        real, dimension(FC_NUM)                :: envresp_1_mn ! Average growth response for height bin 1 (0-1)
+        real, dimension(FC_NUM)                :: envresp_2_mn ! Average growth response for height bin 2 (0-1)
+        real, dimension(FC_NUM)                :: envresp_3_mn ! Average growth response for height bin 3 (0-1)
+        real, dimension(FC_NUM)                :: envresp_1_sd ! Sd of growth response for height bin 1 (0-1)
+        real, dimension(FC_NUM)                :: envresp_2_sd ! Sd of growth response for height bin 2 (0-1)
+        real, dimension(FC_NUM)                :: envresp_3_sd ! Sd of growth response for height bin 3 (0-1)
+		real, dimension(M_TYPES)               :: mort_markers ! Biomass killed by different stressors (tC/ha)
+		real                                   :: loreys_ht_mn ! Average Lorey's Height (m)
+        real                                   :: loreys_ht_sd ! SD of Lorey's Height (m)
+		real                                   :: totbiomC     ! Average biomass (tC/ha)
+        real                                   :: totbiomC_sd  ! SD of  biomass (tC/ha)
+		real                                   :: totbasal     ! Average basal area (m2/ha)
+        real                                   :: totbasal_sd  ! SD of basal area (m2/ha)
+		real                                   :: totstems     ! Average stems (trees/ha)
+        real                                   :: totstems_sd  ! SD of stems (trees/ha)
+        real                                   :: age_mn       ! Average stand age (years)
+        real                                   :: age_sd       ! SD of stand age (years)
+		real                                   :: max_ht       ! Average max height (m)
+        real                                   :: max_ht_sd    ! SD of max height (m)
+        real                                   :: lg_stems_mn  ! Average stems <= 5 cm DBH (trees/ha)
+        real                                   :: lg_stems_sd  ! SD of stems <= 5 cm DBH (trees/ha)
+        real                                   :: med_stems_mn ! Average stems > 5 cm and <= 20 cm DBH (trees/ha)
+        real                                   :: med_stems_sd ! SD of stems > 5 cm and <= 20 cm DBH (trees/ha)
+        real                                   :: sm_stems_mn  ! Average stems > 20 cm DBH (trees/ha)
+        real                                   :: sm_stems_sd  ! SD of stems > 20 cm DBH (trees/ha)
+        integer                                :: laibin_size  ! Size of LAI bins (m)
+	    integer                                :: ip, it, i    ! Looping indices
+        integer                                :: start        ! Start of LAI bin location
+        integer                                :: fin          ! End of LAI bin location
 
-		!for converting to per ha and averaging
-		plotadj = plotscale/float(site%numplots)
-
-		!for converting to per m2 and averaging
-		plotrenorm = 1.0/plotsize/float(site%numplots)
-
-		allocate(tree_ht(site%numplots, maxcells*maxcells))
-		allocate(tree_basal_area(site%numplots, maxcells*maxcells))
-		allocate(tree_biom(site%numplots, maxcells*maxcells))
-		allocate(tree_age(site%numplots, maxcells*maxcells))
-
-		plmaxheight = 0.0
-		basal_ar = 0.0
-		plbiomc = 0.0
-		tree_ht = 0.0
-		tree_basal_area = 0.0
-		tree_biom = 0.0
-		tree_age = 0.0
-		site_lai = 0.0
-		mort_markers = 0.0
+        ! Initialize accumulators
+        loreys_ht = 0.0
+        plbasal_area = 0.0
+        plbiomC = 0.0
+        plstems = 0.0
+        plstandage = 0.0
+        plmaxheight = 0.0
+        mort_markers = 0.0
 		envresp_1 = 0.0
 		envresp_2 = 0.0
 		envresp_3 = 0.0
-		scounts_1 = 0.0
-		scounts_2 = 0.0
-		scounts_3 = 0.0
-		n_1 = 0.0
-		n_2 = 0.0
-		n_3 = 0.0
         lg_stems = 0.0
         sm_stems = 0.0
         med_stems = 0.0
+        site_lai = 0.0
+        totbiomC = 0.0
+        basal_area = 0.0
 
-		!bin LAI into 5-m sections
-        site_lai(1) = sum(site%lai_array(1:5))
-        site_lai(2) = sum(site%lai_array(6:10))
-        site_lai(3) = sum(site%lai_array(11:15))
-        site_lai(4) = sum(site%lai_array(16:20))
-        site_lai(5) = sum(site%lai_array(21:25))
-        site_lai(6) = sum(site%lai_array(26:30))
-        site_lai(7) = sum(site%lai_array(31:35))
-        site_lai(8) = sum(site%lai_array(36:40))
-        site_lai(9) = sum(site%lai_array(41:45))
-        site_lai(10) = sum(site%lai_array(46:50))
-        site_lai(11) = sum(site%lai_array(51:55))
-        site_lai(12) = sum(site%lai_array(56:60))
+        allocate(ht(site%numplots, maxcells*maxcells))
+        allocate(basal_area(site%numplots, maxcells*maxcells))
+        allocate(age(site%numplots, maxcells*maxcells))
 
+		! Bin LAI into height sections
+        laibin_size = maxheight/LAI_BINS
+        do i = 0, LAI_BINS-1
+            start = i*laibin_size + 1
+            fin = i*laibin_size + laibin_size
+            site_lai(i + 1) = sum(site%lai_array(start:fin))
+        end do
 
 		do ip = 1, site%numplots
 
 			do it = 1, site%plots(ip)%numtrees
 
-                if (site%plots(ip)%trees(it)%diam_bht .le. 5.0) then
+                ! Get number of small, medium and large stems
+                if (site%plots(ip)%trees(it)%diam_bht <= 5.0) then
                     sm_stems(ip) = sm_stems(ip) + 1.0
-                else if (site%plots(ip)%trees(it)%diam_bht .gt. 5.0 .and.      &
-                    site%plots(ip)%trees(it)%diam_bht .le. 20.0) then
+                else if (site%plots(ip)%trees(it)%diam_bht > 5.0 .and.         &
+                    site%plots(ip)%trees(it)%diam_bht <= 20.0) then
                     med_stems(ip) = med_stems(ip) + 1.0
-                else if (site%plots(ip)%trees(it)%diam_bht .gt. 20.0) then
+                else if (site%plots(ip)%trees(it)%diam_bht > 20.0) then
                     lg_stems(ip) = lg_stems(ip) + 1.0
                 end if
 
-				!grab individual tree height (m)
-				tree_ht(ip, it) = site%plots(ip)%trees(it)%forska_ht
+				! Grab individual tree height (m)
+				ht(ip, it) = site%plots(ip)%trees(it)%forska_ht
 
-				!calculate individual tree basal area (m2)
-				tree_basal_area(ip, it) =                                      &
-					0.000025*pi*site%plots(ip)%trees(it)%diam_bht**2
+				! Calculate individual tree basal area (m2)
+				basal_area(ip, it) = CM_TO_M*CM_TO_M*0.25*pi*                  &
+                    site%plots(ip)%trees(it)%diam_bht**2
 
-				!sum up plot-level biomass (tC)
-				plbiomc(ip) = plbiomc(ip) + (site%plots(ip)%trees(it)%biomC +  &
-					site%plots(ip)%trees(it)%leaf_bm)
-
-				!sum up plot-level basal area (cm2)
-				basal_ar(ip) = basal_ar(ip) +                                  &
-					0.25*pi*site%plots(ip)%trees(it)%diam_bht**2
-
-				!grab individual tree biomass (tC)
-				tree_biom(ip, it) = site%plots(ip)%trees(it)%biomC +           &
+				! Sum up plot-level aboveground biomass (tC)
+				plbiomC(ip) = plbiomC(ip) + site%plots(ip)%trees(it)%branchC + &
+					site%plots(ip)%trees(it)%stemC +                           &
 					site%plots(ip)%trees(it)%leaf_bm
 
-				!grab individual tree age (years)
-				tree_age(ip, it) = site%plots(ip)%trees(it)%tree_age
+				! Sum up plot-level basal area (m2)
+				plbasal_area(ip) = plbasal_area(ip) + basal_area(ip, it)
 
-				!get maximum height on plot (m)
+				! Grab individual tree age (years)
+				age(ip, it) = site%plots(ip)%trees(it)%tree_age
+
+				! Get maximum height on plot (m)
 				plmaxheight(ip) = max(plmaxheight(ip),                         &
 					site%plots(ip)%trees(it)%forska_ht)
 
-				!sum up growth response to each stressor by height class
-				if (site%plots(ip)%trees(it)%forska_ht .lt. 10.0) then
+				! Sum up growth response to each stressor by height class
+				if (site%plots(ip)%trees(it)%forska_ht < 10.0) then
 
-					envresp_1(ip, 1) = envresp_1(ip, 1) +                      &
-						site%plots(ip)%trees(it)%env_resp(1)
-					envresp_1(ip, 2) = envresp_1(ip, 2) +                      &
-						site%plots(ip)%trees(it)%env_resp(2)
-					envresp_1(ip, 3) = envresp_1(ip, 3) +                      &
-							site%plots(ip)%trees(it)%env_resp(3)
-					envresp_1(ip, 4) = envresp_1(ip, 4) +                      &
-							site%plots(ip)%trees(it)%env_resp(4)
-					envresp_1(ip, 5) = envresp_1(ip, 5) +                      &
-							site%plots(ip)%trees(it)%env_resp(5)
-					envresp_1(ip, 6) = envresp_1(ip, 6) +                      &
-							site%plots(ip)%trees(it)%env_resp(6)
-
-					!get number in this class
+                    do i = 1, FC_NUM
+                        envresp_1(ip, i) = envresp_1(ip, 1) +                  &
+    						site%plots(ip)%trees(it)%env_resp(i)
+                    end do
 					n_1(ip) = n_1(ip) + 1.0
 
-				else if ((site%plots(ip)%trees(it)%forska_ht .ge. 10.0)        &
-					.and. (site%plots(ip)%trees(it)%forska_ht .lt. 20.0)) then
+				else if ((site%plots(ip)%trees(it)%forska_ht >= 10.0)        &
+					.and. (site%plots(ip)%trees(it)%forska_ht < 20.0)) then
 
-					envresp_2(ip, 1) = envresp_2(ip, 1) +                      &
-						site%plots(ip)%trees(it)%env_resp(1)
-					envresp_2(ip, 2) = envresp_2(ip, 2) +                      &
-						site%plots(ip)%trees(it)%env_resp(2)
-					envresp_2(ip, 3) = envresp_2(ip, 3) +                      &
-						site%plots(ip)%trees(it)%env_resp(3)
-					envresp_2(ip, 4) = envresp_2(ip, 4) +                      &
-						site%plots(ip)%trees(it)%env_resp(4)
-					envresp_2(ip, 5) = envresp_2(ip, 5) +                      &
-						site%plots(ip)%trees(it)%env_resp(5)
-					envresp_2(ip, 6) = envresp_2(ip, 6) +                      &
-						site%plots(ip)%trees(it)%env_resp(6)
-
-					!get number in this class
+                    do i = 1, FC_NUM
+                        envresp_2(ip, i) = envresp_2(ip, 1) +                  &
+                            site%plots(ip)%trees(it)%env_resp(i)
+                    end do
 					n_2(ip) = n_2(ip) + 1.0
 
 				else if (site%plots(ip)%trees(it)%forska_ht .ge. 20.0) then
 
-					envresp_3(ip, 1) = envresp_3(ip, 1) +                      &
-						site%plots(ip)%trees(it)%env_resp(1)
-					envresp_3(ip, 2) = envresp_3(ip, 2) +                      &
-						site%plots(ip)%trees(it)%env_resp(2)
-					envresp_3(ip, 3) = envresp_3(ip, 3) +                      &
-						site%plots(ip)%trees(it)%env_resp(3)
-					envresp_3(ip, 4) = envresp_3(ip, 4) +                      &
-						site%plots(ip)%trees(it)%env_resp(4)
-					envresp_3(ip, 5) = envresp_3(ip, 5) +                      &
-						site%plots(ip)%trees(it)%env_resp(5)
-					envresp_3(ip, 6) = envresp_3(ip, 6) +                      &
-						site%plots(ip)%trees(it)%env_resp(6)
-
-					!get number in this class
+                    do i = 1, FC_NUM
+                        envresp_3(ip, i) = envresp_3(ip, 1) +                  &
+                            site%plots(ip)%trees(it)%env_resp(i)
+                    end do
 					n_3(ip) = n_3(ip) + 1.0
-
-				end if
-
-				!get number of trees for each most limiting factor by height
-				  !class
-				if (site%plots(ip)%trees(it)%forska_ht .lt. 10.0) then
-
-					stress = site%plots(ip)%trees(it)%stressor
-					scounts_1(ip, stress) = scounts_1(ip, stress) + 1.0
-
-				else if ((site%plots(ip)%trees(it)%forska_ht .ge. 10.0) &
-					.and. (site%plots(ip)%trees(it)%forska_ht .lt. 20.0)) then
-
-					stress = site%plots(ip)%trees(it)%stressor
-					scounts_2(ip, stress) = scounts_2(ip, stress) + 1.0
-
-				else if (site%plots(ip)%trees(it)%forska_ht .ge. 20.0) then
-
-					stress = site%plots(ip)%trees(it)%stressor
-					scounts_3(ip, stress) = scounts_3(ip, stress) + 1.0
 
 				end if
 			enddo
 
-		    !Lorey's Height calculation
-			LH_num = sum((tree_basal_area(ip, :))*(tree_ht(ip, :)))
-			LH_denom = sum(tree_basal_area(ip, :))
-			if (LH_denom .eq. 0.0) then
-				LH(ip) = 0.0
+		    ! Lorey's Height calculation
+			if (site%plots(ip)%numtrees == 0.0) then
+				loreys_ht(ip) = 0.0
 			else
-				LH(ip) = LH_num/LH_denom
+				loreys_ht(ip) = sum((basal_area(ip, :))*(ht(ip, :)))/          &
+                    sum(basal_area(ip, :))
 			endif
 
-			!weighted stand age calculation
-			WA_num = sum((tree_biom(ip, :))*(tree_age(ip, :)))
-			WA_denom = sum(tree_biom(ip, :))
-			if (WA_denom .eq. 0.0) then
-				WA(ip) = 0.0
-			else
-				WA(ip) = WA_num/WA_denom
-			endif
+			! Plot level stems
+			plstems(ip) = site%plots(ip)%numtrees
 
-			!plot level stems
-			stems(ip) = site%plots(ip)%numtrees
-
-			!plot level stand age (not weighted) - age of oldest tree
+			! Plot level stand - age of oldest tree
 			plstandage(ip) = site%plots(ip)%stand_age
 
-			!mortality markers - biomass killed per stressor
-			mort_markers(1) = mort_markers(1) + site%plots(ip)%d_type(1)
-			mort_markers(2) = mort_markers(2) + site%plots(ip)%d_type(2)
-			mort_markers(3) = mort_markers(3) + site%plots(ip)%d_type(3)
-			mort_markers(4) = mort_markers(4) + site%plots(ip)%d_type(4)
-			mort_markers(5) = mort_markers(5) + site%plots(ip)%d_type(5)
-			mort_markers(6) = mort_markers(6) + site%plots(ip)%d_type(6)
-			mort_markers(7) = mort_markers(7) + site%plots(ip)%d_type(7)
-			mort_markers(8) = mort_markers(8) + site%plots(ip)%d_type(8)
+			! Mortality markers - biomass killed per stressor
+            do i = 1, M_TYPES
+                mort_markers(i) = mort_markers(i) + site%plots(ip)%d_type(i)
+            end do
 
-
-			!get average or proportion of each stressor type
-			if (n_1(ip) .ge. 1.0) then
+			! Get average of each stressor type
+			if (n_1(ip) >= 1.0) then
 				envresp_1(ip, :) = envresp_1(ip, :)/n_1(ip)
-				scounts_1(ip, :) = scounts_1(ip, :)/n_1(ip)
 			else
-				envresp_1(ip, :) = rnvalid
-				scounts_1(ip, :) = rnvalid
+				envresp_1(ip, :) = RNVALID
 			end if
 
-			if (n_2(ip) .ge. 1.0) then
+			if (n_2(ip) >= 1.0) then
 				envresp_2(ip, :) = envresp_2(ip, :)/n_2(ip)
-				scounts_2(ip, :) = scounts_2(ip, :)/n_2(ip)
 			else
-				envresp_2(ip, :) = rnvalid
-				scounts_2(ip, :) = rnvalid
+				envresp_2(ip, :) = RNVALID
 			end if
 
-			if (n_3(ip) .ge. 1.0) then
+			if (n_3(ip) >= 1.0) then
 				envresp_3(ip, :) = envresp_3(ip, :)/n_3(ip)
-				scounts_3(ip, :) = scounts_3(ip, :)/n_3(ip)
 			else
-				envresp_3(ip, :) = rnvalid
-				scounts_3(ip, :) = rnvalid
+				envresp_3(ip, :) = RNVALID
 			end if
 
-		enddo
+		end do
 
-		!get average of mortality bins and convert to tC/ha
+		! Get average of mortality bins and convert to tC/ha
 		mort_markers(:) = mort_markers(:)/float(site%numplots)/plotsize*       &
-			hec_to_m2
+			HEC_TO_M2
 
-		!compute means and stds
-		call stddev(LH, LH_mean, LH_std, rnvalid)
-		call stddev(plbiomc, Totalbiomc, Totalbiomc_std, rnvalid)
-		call stddev(basal_ar, Totalbasal, Totalbasal_std, rnvalid)
-		call stddev(stems, Totalstems, Totalstems_std, rnvalid)
-		call stddev(plmaxheight, Maxheight, Maxheight_std, rnvalid)
-		call stddev(plstandage, Avg_age, Avg_age_std, rnvalid)
-		call stddev(WA, WA_mean, WA_std, rnvalid)
-        call stddev(lg_stems, lg_stems_mn, lg_stems_std, rnvalid)
-        call stddev(med_stems, med_stems_mn, med_stems_std, rnvalid)
-        call stddev(sm_stems, sm_stems_mn, sm_stems_std, rnvalid)
+		! Compute means and standard deviations
+		call stddev(loreys_ht, loreys_ht_mn, loreys_ht_sd, RNVALID)
+		call stddev(plbiomC, totbiomC, totbiomC_sd, RNVALID)
+		call stddev(plbasal_area, totbasal, totbasal_sd, RNVALID)
+		call stddev(plstems, totstems, totstems_sd, RNVALID)
+		call stddev(plmaxheight, max_ht, max_ht_sd, RNVALID)
+		call stddev(plstandage, age_mn, age_sd, RNVALID)
+        call stddev(lg_stems, lg_stems_mn, lg_stems_sd, RNVALID)
+        call stddev(med_stems, med_stems_mn, med_stems_sd, RNVALID)
+        call stddev(sm_stems, sm_stems_mn, sm_stems_sd, RNVALID)
 
-		do m = 1, 6
-			call stddev(envresp_1(:, m), envresp_1mn(m), envresp_1sd(m),       &
-				rnvalid)
-			call stddev(envresp_2(:, m), envresp_2mn(m), envresp_2sd(m),       &
-				rnvalid)
-			call stddev(envresp_3(:, m), envresp_3mn(m), envresp_3sd(m),       &
-				rnvalid)
+		do i = 1, FC_NUM
+			call stddev(envresp_1(:, i), envresp_1_mn(i), envresp_1_sd(i),     &
+				RNVALID)
+			call stddev(envresp_2(:, i), envresp_2_mn(i), envresp_2_sd(i),     &
+				RNVALID)
+			call stddev(envresp_3(:, i), envresp_3_mn(i), envresp_3_sd(i),     &
+				RNVALID)
 		end do
 
-		do m = 1, 6
-			call stddev(scounts_1(:, m), scounts_1mn(m), scounts_1sd(m),       &
-				rnvalid)
-			call stddev(scounts_2(:, m), scounts_2mn(m), scounts_2sd(m),       &
-				rnvalid)
-			call stddev(scounts_3(:, m), scounts_3mn(m), scounts_3sd(m),       &
-				rnvalid)
-		end do
+        ! Convert units
+		totbiomC = totbiomC*HEC_TO_M2/plotsize         ! tC/ha
+		totbiomC_sd = totbiomC_sd*HEC_TO_M2/plotsize   ! tC/ha
+		totbasal = totbasal*HEC_TO_M2/plotsize         ! m2/ha
+		totbasal_sd = totbasal_sd*HEC_TO_M2/plotsize   ! m2/ha
+		totstems = totstems*HEC_TO_M2/plotsize         ! stems/ha
+		totstems_sd = totstems_sd*HEC_TO_M2/plotsize   ! stems/ha
+        lg_stems_mn = lg_stems_mn*HEC_TO_M2/plotsize   ! stems/ha
+        lg_stems_sd = lg_stems_sd*HEC_TO_M2/plotsize   ! stems/ha
+        med_stems_mn = med_stems_mn*HEC_TO_M2/plotsize ! stems/ha
+        med_stems_sd = med_stems_sd*HEC_TO_M2/plotsize ! stems/ha
+        sm_stems_mn = sm_stems_mn*HEC_TO_M2/plotsize   ! stems/ha
+        sm_stems_sd = sm_stems_sd*HEC_TO_M2/plotsize   ! stems/ha
 
-		Totalbiomc = plotscale*Totalbiomc  !converted to tc/ha
-		Totalbiomc_std = plotscale*Totalbiomc_std !tc/ha
-		Totalbasal = Totalbasal/plotsize*hec_to_m2*0.0001 !m2/ha
-		Totalbasal_std = Totalbasal_std/plotsize*hec_to_m2 !cm2/ha
-		Totalstems = Totalstems*plotscale !converted to total stems/ha
-		Totalstems_std = Totalstems*plotscale !converted to stems/ha
-        lg_stems_mn = lg_stems_mn*plotscale !converted to total stems/ha
-        lg_stems_std = lg_stems_std*plotscale !converted to stems/ha
-        med_stems_mn = med_stems_mn*plotscale !converted to total stems/ha
-        med_stems_std = med_stems_std*plotscale !converted to stems/ha
-        sm_stems_mn = sm_stems_mn*plotscale !converted to total stems/ha
-        sm_stems_std = sm_stems_std*plotscale !converted to stems/ha
-
-		!write to csv
+		! Write to csv
 		call csv_write(plotvals, site%site_id, .false.)
 		call csv_write(plotvals, site%runID, .false.)
 		call csv_write(plotvals, year, .false.)
-		call csv_write(plotvals, mort_markers(1), .false.)
-		call csv_write(plotvals, mort_markers(2), .false.)
-		call csv_write(plotvals, mort_markers(3), .false.)
-		call csv_write(plotvals, mort_markers(4), .false.)
-		call csv_write(plotvals, mort_markers(5), .false.)
-		call csv_write(plotvals, mort_markers(6), .false.)
-		call csv_write(plotvals, mort_markers(7), .false.)
-		call csv_write(plotvals, mort_markers(8), .false.)
-		call csv_write(plotvals, envresp_1mn(1), .false.)
-		call csv_write(plotvals, envresp_1mn(2), .false.)
-		call csv_write(plotvals, envresp_1mn(3), .false.)
-		call csv_write(plotvals, envresp_1mn(4), .false.)
-		call csv_write(plotvals, envresp_1mn(5), .false.)
-		call csv_write(plotvals, envresp_1mn(6), .false.)
-		call csv_write(plotvals, envresp_2mn(1), .false.)
-		call csv_write(plotvals, envresp_2mn(2), .false.)
-		call csv_write(plotvals, envresp_2mn(3), .false.)
-		call csv_write(plotvals, envresp_2mn(4), .false.)
-		call csv_write(plotvals, envresp_2mn(5), .false.)
-		call csv_write(plotvals, envresp_2mn(6), .false.)
-		call csv_write(plotvals, envresp_3mn(1), .false.)
-		call csv_write(plotvals, envresp_3mn(2), .false.)
-		call csv_write(plotvals, envresp_3mn(3), .false.)
-		call csv_write(plotvals, envresp_3mn(4), .false.)
-		call csv_write(plotvals, envresp_3mn(5), .false.)
-		call csv_write(plotvals, envresp_3mn(6), .false.)
-		call csv_write(plotvals, scounts_1mn(1), .false.)
-		call csv_write(plotvals, scounts_1mn(2), .false.)
-		call csv_write(plotvals, scounts_1mn(3), .false.)
-		call csv_write(plotvals, scounts_1mn(4), .false.)
-		call csv_write(plotvals, scounts_1mn(5), .false.)
-		call csv_write(plotvals, scounts_1mn(6), .false.)
-		call csv_write(plotvals, scounts_2mn(1), .false.)
-		call csv_write(plotvals, scounts_2mn(2), .false.)
-		call csv_write(plotvals, scounts_2mn(3), .false.)
-		call csv_write(plotvals, scounts_2mn(4), .false.)
-		call csv_write(plotvals, scounts_2mn(5), .false.)
-		call csv_write(plotvals, scounts_2mn(6), .false.)
-		call csv_write(plotvals, scounts_3mn(1), .false.)
-		call csv_write(plotvals, scounts_3mn(2), .false.)
-		call csv_write(plotvals, scounts_3mn(3), .false.)
-		call csv_write(plotvals, scounts_3mn(4), .false.)
-		call csv_write(plotvals, scounts_3mn(5), .false.)
-		call csv_write(plotvals, scounts_3mn(6), .false.)
-		call csv_write(plotvals, LH_mean, .false.)
-		call csv_write(plotvals, LH_std, .false.)
-		call csv_write(plotvals, Maxheight, .false.)
-		call csv_write(plotvals, Maxheight_std, .false.)
-		call csv_write(plotvals, Totalbiomc, .false.)
-		call csv_write(plotvals, Totalbiomc_std, .false.)
-		call csv_write(plotvals, Totalbasal, .false.)
-		call csv_write(plotvals, Totalbasal_std, .false.)
-		call csv_write(plotvals, Totalstems, .false.)
-		call csv_write(plotvals, Totalstems_std, .false.)
+        do i = 1, M_TYPES
+		    call csv_write(plotvals, mort_markers(i), .false.)
+        end do
+        do i = 1, FC_NUM
+            call csv_write(plotvals, envresp_1_mn(i), .false.)
+            call csv_write(plotvals, envresp_2_mn(i), .false.)
+            call csv_write(plotvals, envresp_3_mn(i), .false.)
+        end do
+		call csv_write(plotvals, loreys_ht_mn, .false.)
+		call csv_write(plotvals, loreys_ht_sd, .false.)
+		call csv_write(plotvals, max_ht, .false.)
+		call csv_write(plotvals, max_ht_sd, .false.)
+		call csv_write(plotvals, totbiomC, .false.)
+		call csv_write(plotvals, totbiomC_sd, .false.)
+		call csv_write(plotvals, totbasal, .false.)
+		call csv_write(plotvals, totbasal_sd, .false.)
+		call csv_write(plotvals, totstems, .false.)
+		call csv_write(plotvals, totstems_sd, .false.)
         call csv_write(plotvals, sm_stems_mn, .false.)
-        call csv_write(plotvals, sm_stems_std, .false.)
+        call csv_write(plotvals, sm_stems_sd, .false.)
         call csv_write(plotvals, med_stems_mn, .false.)
-        call csv_write(plotvals, med_stems_std, .false.)
+        call csv_write(plotvals, med_stems_sd, .false.)
         call csv_write(plotvals, lg_stems_mn, .false.)
-        call csv_write(plotvals, lg_stems_std, .false.)
-		call csv_write(plotvals, Avg_age, .false.)
-		call csv_write(plotvals, Avg_age_std, .false.)
-		call csv_write(plotvals, WA_mean, .false.)
-		call csv_write(plotvals, WA_std, .false.)
-		call csv_write(plotvals, site_lai(1), .false.)
-		call csv_write(plotvals, site_lai(2), .false.)
-		call csv_write(plotvals, site_lai(3), .false.)
-		call csv_write(plotvals, site_lai(4), .false.)
-		call csv_write(plotvals, site_lai(5), .false.)
-		call csv_write(plotvals, site_lai(6), .false.)
-		call csv_write(plotvals, site_lai(7), .false.)
-		call csv_write(plotvals, site_lai(8), .false.)
-		call csv_write(plotvals, site_lai(9), .false.)
-		call csv_write(plotvals, site_lai(10), .false.)
-		call csv_write(plotvals, site_lai(11), .false.)
-		call csv_write(plotvals, site_lai(12), .true.)
+        call csv_write(plotvals, lg_stems_sd, .false.)
+		call csv_write(plotvals, age_mn, .false.)
+		call csv_write(plotvals, age_sd, .false.)
+        do i = 1, LAI_BINS-1
+            call csv_write(plotvals, site_lai(i), .false.)
+        end do
+		call csv_write(plotvals, site_lai(LAI_BINS), .true.)
 
 	end subroutine total_plot_values
 
   !:...........................................................................:
 
-	subroutine write_genus_data(site, species_pres, year)
-		!writes output data to Genus_Data.csv and Plot_Genus_Data.csv
-		  !file if writing plot-level data
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs:
-		!	site:         site instance
-		!	species_pres: species present at site
-		!	year:         simulation year
+	subroutine write_genus_or_species_data(site, species_pres, year, field,    &
+        num_types, funit, funit_p)
+        !
+        !  Writes dead species- or genus- level data to output
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/12     K. Holcomb          Original code
+        !    01/29/21     A. C. Foster        Update to write either species
+        !                                         or genus data
 
-		type(SiteData),   intent(in)            :: site
-		type(Groups),     intent(in)            :: species_pres
-		integer,          intent(in)            :: year
+        ! Data dictionary: calling arguments
+		type(SiteData),          intent(in)           :: site         ! Site object
+		type(Groups),            intent(in)           :: species_pres ! List of genus and species names
+		integer,                 intent(in)           :: year         ! Simulation year
+        character(len = 8),      intent(in)           :: field        ! 'genus' or 'species'
+        integer,                 intent(in)           :: num_types    ! Number of species or genera
+        integer,                 intent(in)           :: funit        ! File unit for output file
+        integer,                 intent(in)           :: funit_p      ! File unit for plot-level output file
 
-		integer, dimension(site%numplots, species_pres%numgenera, NHC) :: diam_categories
-		real,    dimension(site%numplots, species_pres%numgenera, NHC) :: biom_categories
-		real,    dimension(site%numplots, species_pres%numgenera, 6) :: envi_resp
-		real,    dimension(site%numplots, species_pres%numgenera) :: basal_area
-		real,    dimension(site%numplots, species_pres%numgenera) :: biomC,    &
-																	 biomN,    &
-												                     leaf_bm,  &
-												                     leaf_area, &
-												                     max_ht,   &
-												                     max_diam, &
-												                     plotlevel_biomc, &
-												                     plotlevel_biomn, &
-												                     plotlevel_basal, &
-												                     mean_dbh, &
-												                     mean_year
+        ! Data dictionary: local variables
+        character(len=MAX_NLEN), dimension(num_types)        :: genera        ! Species/genus names
+        integer, dimension(site%numplots, num_types, NHC)    :: diam_cats     ! Size structure (stems/dbh bin)
+        real,    dimension(site%numplots, num_types, NHC)    :: biom_cats     ! Biomass by dbh bin (tC)
+        real,    dimension(site%numplots, num_types, FC_NUM) :: env_resp      ! Growth response to stressors (0-1)
+        real,    dimension(site%numplots, num_types)         :: basal_area    ! Basal area (m2)
+        real,    dimension(site%numplots, num_types)         :: biomC         ! Aboveground biomass (tC)
+        real,    dimension(site%numplots, num_types)         :: biomN         ! N content (tC)
+        real,    dimension(site%numplots, num_types)         :: leaf_bm       ! Leaf biomass (tC)
+        real,    dimension(site%numplots, num_types)         :: max_ht        ! Maximum height (m)
+        real,    dimension(site%numplots, num_types)         :: max_diam      ! Maximum diameter (cm)
+        real,    dimension(site%numplots, num_types)         :: mean_diam     ! Average diameter (cm)
+        real,    dimension(site%numplots, num_types)         :: mean_age      ! Average age
+        real,    dimension(site%numplots, num_types)         :: biomC_lg      ! Biomass > 9 cm DBH (tC)
+        real,    dimension(site%numplots, num_types)         :: biomC_sm      ! Biomass < 9 cm DBH (tC)
+        real,    dimension(site%numplots, num_types)         :: basal_lg      ! Basal area > 9 cm DBH (m2)
+        real,    dimension(site%numplots, num_types)         :: basal_sm      ! Basal area < 9 cm DBH (m2)
+        real,    dimension(site%numplots, num_types)         :: dens_lg       ! Stems > 9 cm DBH (#)
+        real,    dimension(site%numplots, num_types)         :: dens_sm       ! Stems < 9 cm DBH (#)
+        real,    dimension(site%numplots, num_types)         :: dbh_lg        ! Average dbh > 9 cm DBH (cm)
+        real,    dimension(site%numplots, num_types)         :: dbh_sm        ! Average dbh < 9 cm DBH (cm)
+        real,    dimension(num_types, FC_NUM)                :: env_resp_mn   ! Average growth response (0-1)
+        real,    dimension(num_types, FC_NUM)                :: env_resp_sd   ! SD of growth response (0-1)
+        real,    dimension(num_types, NHC)                   :: tot_diam_cats ! Average size structure (stems/ha)
+        real,    dimension(num_types, NHC)                   :: tot_biom_cats ! Average biomass by bin (tC/ha)
+        real,    dimension(num_types)                        :: tot_basal     ! Average basal area (m2/ha)
+        real,    dimension(num_types)                        :: tot_basal_sd  ! SD of basal area (m2/ha)
+        real,    dimension(num_types)                        :: tot_biomC     ! Average aboveground biomass (tC/ha)
+        real,    dimension(num_types)                        :: tot_biomC_sd  ! SD aboveground biomass (tC/ha)
+        real,    dimension(num_types)                        :: tot_biomN     ! Average N content (tN/ha)
+        real,    dimension(num_types)                        :: tot_biomN_sd  ! SD of N content (tN/ha)
+        real,    dimension(num_types)                        :: tot_leafbm    ! Average leaf biomass (tC)
+        real,    dimension(num_types)                        :: tot_leafbm_sd ! SD of leaf biomass (tC)
+        real,    dimension(num_types)                        :: max_ht_mn     ! Average maximum height (m)
+        real,    dimension(num_types)                        :: max_ht_sd     ! SD of maximum height (m)
+        real,    dimension(num_types)                        :: max_diam_mn   ! Average maximum diameter (cm)
+        real,    dimension(num_types)                        :: max_diam_sd   ! SD of maximum diameter (cm)
+        real,    dimension(num_types)                        :: mean_diam_mn  ! Average diameter (cm)
+        real,    dimension(num_types)                        :: mean_diam_sd  ! SD of diameter (cm)
+        real,    dimension(num_types)                        :: age_mn        ! Average age (years)
+        real,    dimension(num_types)                        :: age_sd        ! SD of age (years)
+        real,    dimension(num_types)                        :: biomC_lg_mn   ! Average biomass > 9 cm DBH (tC/ha)
+        real,    dimension(num_types)                        :: biomC_lg_sd   ! SD biomass > 9 cm DBH (tC/ha)
+        real,    dimension(num_types)                        :: biomC_sm_mn   ! Average basal < 9 cm DBH (tC/ha)
+        real,    dimension(num_types)                        :: biomC_sm_sd   ! SD biomass < 9 cm DBH (tC/ha)
+        real,    dimension(num_types)                        :: basal_lg_mn   ! Average basal area > 9 cm DBH (m2/ha)
+        real,    dimension(num_types)                        :: basal_lg_sd   ! SD basal_area > 9 cm DBH (m2/ha)
+        real,    dimension(num_types)                        :: basal_sm_mn   ! Average basal area < 9 cm DBH (m2/ha)
+        real,    dimension(num_types)                        :: basal_sm_sd   ! SD basal area < 9 cm DBH (m2/ha)
+        real,    dimension(num_types)                        :: dens_lg_mn    ! Average stems > 9 cm DBH (stems/ha)
+        real,    dimension(num_types)                        :: dens_lg_sd    ! SD stems > 9 cm DBH (stems/ha)
+        real,    dimension(num_types)                        :: dens_sm_mn    ! Average stems < 9 cm DBH (stems/ha)
+        real,    dimension(num_types)                        :: dens_sm_sd    ! SD stems > 9 cm DBH (stems/ha)
+        real,    dimension(num_types)                        :: dbh_lg_mn     ! Average diameter > 9 cm DBH (cm)
+        real,    dimension(num_types)                        :: dbh_lg_sd     ! SD of diameter > 9 cm DBH (cm)
+        real,    dimension(num_types)                        :: dbh_sm_mn     ! Average diameter < 9 cm DBH (cm)
+        real,    dimension(num_types)                        :: dbh_sm_sd     ! SD of diameter < 9 cm DBH (cm)
+        integer, dimension(num_types)                        :: spec_index    ! Location of present species/genera
+		logical, dimension(num_types)                        :: in_site       ! Is the species/genus in the site?
+        character(len=MAX_NLEN)                              :: comp          ! Species/genus name
+        character(len=MAX_NLEN)                              :: genname       ! Genus name
+		integer                                              :: ip, is, ns, l ! Looping indices
 
-		real, dimension(species_pres%numgenera, NHC) :: total_dm_cats
-		real,    dimension(species_pres%numgenera, NHC) :: total_biom_cats
-		real,    dimension(species_pres%numgenera, 6) :: total_envi_resp
-		real,    dimension(species_pres%numgenera) :: total_biomc,             &
-													  total_biomn,             &
-													  total_basal,             &
-                                                      total_laibm,             &
-                                                      total_max_ht,            &
-                                                      total_max_diam,          &
-                                                      plot_mean_biomc,         &
-                                                      plot_std_biomc,          &
-                                                      plot_mean_biomn,         &
-                                                      plot_std_biomn,          &
-                                                      plot_mean_basal,         &
-                                                      plot_std_basal,          &
-                                                      plot_mean_dbh,           &
-                                                      plot_std_dbh,            &
-                                                      plot_mean_year,          &
-                                                      plot_std_year,           &
-                                                      plot_mean_Maxdbh,        &
-                                                      plot_std_Maxdbh,         &
-                                                      plot_mean_Maxht,         &
-                                                      plot_std_Maxht
-        real,   dimension(species_pres%numspecies, 6)    :: plot_env_resp_mn,  &
-												            plot_env_resp_sd
+        ! Get either genera or species
+        if (field == 'genus') then
+            genera = species_pres%genusgroups
+        else if (field == 'species') then
+            genera = species_pres%spec_names(:, 2)
+        end if
 
-		integer, dimension(species_pres%numspecies) :: spec_index
-		logical, dimension(species_pres%numgenera)  :: in_site
-
-		character(len = 8)                     :: field = 'genus'
-		integer                                :: iwmo
-		integer                                :: ip, is, ns, l
-
-		plotscale = hec_to_m2/plotsize
-		plotadj = plotscale/float(site%numplots)
-		plotrenorm = 1.0/plotsize/float(site%numplots)
-
-		iwmo = site%site_id
-
-	    !check to see which genera are in the site
+	    ! Check to see which species/genera are in the site
 		in_site = .false.
-		do is = 1, species_pres%numgenera
+		do is = 1, num_types
 			do ip = 1, site%numplots
-				do ns = 1, size(site%plots(ip)%species)
-					if (species_pres%genusgroups(is) .eq.                      &
-						site%plots(ip)%species(ns)%genus_name) then
+				do ns = 1, size(site%species)
+                    if (field == 'genus') then
+                        comp = site%species(ns)%genus_name
+                    else
+                        comp = site%species(ns)%unique_id
+                    end if
+					if (genera(is) == comp) then
 						spec_index(is) = ns
 						in_site(is) = .true.
 						exit
@@ -523,843 +421,168 @@ contains
 			enddo
 		enddo
 
-		!get individual plot data for each genus
-		do ip = 1,site%numplots
-			call sum_over_sg(site%plots(ip), species_pres%genusgroups, field,  &
-							basal_area(ip, :), leaf_bm(ip, :), biomC(ip, :),   &
-							biomN(ip, :), max_ht(ip, :), max_diam(ip, :),      &
-							mean_dbh(ip, :), mean_year(ip, :),                 &
-							biom_categories(ip, :, :), envi_resp(ip, :, :))
+		! Get individual plot data for each genus
+		do ip = 1, site%numplots
+			call sum_over_sg(site%plots(ip), genera, field, basal_area(ip, :), &
+                leaf_bm(ip, :), biomC(ip, :), biomN(ip, :), max_ht(ip, :),     &
+                max_diam(ip, :), mean_diam(ip, :), mean_age(ip, :),            &
+                biom_cats(ip, :, :), env_resp(ip, :, :), basal_lg(ip, :),      &
+                basal_sm(ip, :), dbh_lg(ip, :), dbh_sm(ip, :), dens_lg(ip, :), &
+                dens_sm(ip, :), biomC_lg(ip, :), biomC_sm(ip, :))
 
-			call tree_dm_cats(site%plots(ip), species_pres%genusgroups,        &
-							field, diam_categories(ip, :, :))
+			call tree_dm_cats(site%plots(ip), genera, field,                   &
+                diam_cats(ip, :, :))
 		enddo
 
-		total_biomc = 0.0
-		total_biomn = 0.0
-		total_basal = 0.0
-		total_laibm = 0.0
-		total_max_ht = 0.0
-		total_max_diam = 0.0
-		plotlevel_biomc = rnvalid
-		plotlevel_biomn = rnvalid
-		plotlevel_basal = rnvalid
-		total_dm_cats = 0
-		total_biom_cats = 0.0
-		total_envi_resp = 0.0
 
-		!accumulate across-plot data
-		do is = 1, species_pres%numgenera
-			do ip = 1, site%numplots
-				if (in_site(is)) then
-					ns = spec_index(is)
-					total_biomc(is) = total_biomc(is) + biomc(ip, is)
-					total_biomn(is) = total_biomn(is) + biomn(ip, is)
-					total_basal(is) = total_basal(is) + basal_area(ip, is)
-					total_laibm(is) = total_laibm(is) + leaf_bm(ip, is)/       &
-						(site%plots(ip)%species(ns)%leafarea_c*2.0)
-					total_max_ht(is) = max(total_max_ht(is), max_ht(ip, is))
-					total_max_diam(is) = max(total_max_diam(is),               &
-						max_diam(ip, is))
-					total_dm_cats(is, :) = total_dm_cats(is, :) +              &
-						float(diam_categories(ip, is, :))
-					total_biom_cats(is, :) = total_biom_cats(is, :) +          &
-						biom_categories(ip, is, :)
-					total_envi_resp(is, :) = total_envi_resp(is, :) +          &
-						envi_resp(ip, is, :)
-				endif
-			enddo
+        tot_biomC = RNVALID
+        tot_biomN = RNVALID
+        tot_basal = RNVALID
+        env_resp_mn = RNVALID
+        tot_diam_cats = 0
+        tot_biom_cats = 0.0
 
-			!get mean and standard deviation of data
-			call stddev(biomc(:, is), plot_mean_biomc(is), plot_std_biomc(is), &
-				rnvalid)
-			call stddev(biomn(:, is), plot_mean_biomn(is), plot_std_biomn(is), &
-				rnvalid)
-			call stddev(mean_dbh(:, is), plot_mean_dbh(is), plot_std_dbh(is),  &
-				rnvalid)
-			call stddev(mean_year(:, is), plot_mean_year(is),                  &
-				plot_std_year(is), rnvalid)
-			call stddev(basal_area(:, is), plot_mean_basal(is),                &
-				plot_std_basal(is), rnvalid)
+		! Accumulate across-plot data
+		do is = 1, num_types
+            do ip = 1, site%numplots
+                if (in_site(is)) then
+                    tot_diam_cats(is, :) = tot_diam_cats(is, :) +              &
+                        float(diam_cats(ip, is, :))
+                    tot_biom_cats(is, :) = tot_biom_cats(is, :) +              &
+                        biom_cats(ip, is, :)
+                endif
+            enddo
 
-			call stddev(max_diam(:, is), plot_mean_Maxdbh(is),                 &
-				plot_std_Maxdbh(is), rnvalid)
-			call stddev(max_ht(:, is), plot_mean_Maxht(is),                    &
-				plot_std_Maxht(is), rnvalid)
+            ! Get mean and standard deviation of data
+            call stddev(basal_area(:, is), tot_basal(is), tot_basal_sd(is),    &
+                RNVALID)
+			call stddev(biomC(:, is), tot_biomC(is), tot_biomC_sd(is), RNVALID)
+			call stddev(biomN(:, is), tot_biomN(is), tot_biomN_sd(is), &
+				RNVALID)
+            call stddev(leaf_bm(:, is), tot_leafbm(is), tot_leafbm_sd(is),     &
+				RNVALID)
+            call stddev(max_ht(:, is), max_ht_mn(is), max_ht_sd(is), RNVALID)
+            call stddev(max_diam(:, is), max_diam_mn(is), max_diam_sd(is),     &
+                RNVALID)
+			call stddev(mean_diam(:, is), mean_diam_mn(is), mean_diam_sd(is),  &
+				RNVALID)
+			call stddev(mean_age(:, is), age_mn(is), age_sd(is), RNVALID)
+            call stddev(biomC_lg(:, is), biomC_lg_mn(is), biomC_lg_sd(is),     &
+                RNVALID)
+            call stddev(biomC_sm(:, is), biomC_sm_mn(is), biomC_sm_sd(is),     &
+                RNVALID)
+            call stddev(basal_lg(:, is), basal_lg_mn(is), basal_lg_sd(is),     &
+                RNVALID)
+            call stddev(basal_sm(:, is), basal_sm_mn(is), basal_sm_sd(is),     &
+                RNVALID)
+            call stddev(dbh_lg(:, is), dbh_lg_mn(is), dbh_lg_sd(is), RNVALID)
+            call stddev(dbh_sm(:, is), dbh_sm_mn(is), dbh_sm_sd(is), RNVALID)
+            call stddev(dens_lg(:, is), dens_lg_mn(is), dens_lg_sd(is), RNVALID)
+            call stddev(dens_sm(:, is), dens_sm_mn(is), dens_sm_sd(is), RNVALID)
 
-			do l = 1, 6
-				call stddev(envi_resp(:, is, l), plot_env_resp_mn(is, l),      &
-					plot_env_resp_sd(is, l), rnvalid)
+			do l = 1, FC_NUM
+				call stddev(env_resp(:, is, l), env_resp_mn(is, l),            &
+					env_resp_sd(is, l), RNVALID)
 			end do
 		enddo
 
-		!convert values to per ha
-		plotlevel_biomc = plotscale*biomc
-		plotlevel_basal = plotscale*basal_area*0.0001 !m2/ha
+        ! Convert to correct units
+        tot_basal = tot_basal*HEC_TO_M2/plotsize         ! m2/ha
+        tot_basal_sd = tot_basal_sd*HEC_TO_M2/plotsize   ! m2/ha
+        tot_biomC = tot_biomC*HEC_TO_M2/plotsize         ! tC/ha
+        tot_biomC_sd = tot_biomC_sd*HEC_TO_M2/plotsize   ! tC/ha
+        tot_biomN = tot_biomN*HEC_TO_M2/plotsize         ! tN/ha
+        tot_biomN_sd = tot_biomN_sd*HEC_TO_M2/plotsize   ! tN/ha
+        tot_leafbm = tot_leafbm/plotsize                 ! tC/m2
+        tot_leafbm_sd = tot_leafbm_sd/plotsize           ! tC/m2
+        biomC_lg_mn = biomC_lg_mn*HEC_TO_M2/plotsize     ! tC/ha
+        biomC_lg_sd = biomC_lg_sd*HEC_TO_M2/plotsize     ! tC/ha
+        biomC_sm_mn = biomC_sm_mn*HEC_TO_M2/plotsize     ! tC/ha
+        biomC_sm_sd = biomC_sm_sd*HEC_TO_M2/plotsize     ! tC/ha
+        basal_lg_mn = basal_lg_mn*HEC_TO_M2/plotsize     ! m2/ha
+        basal_lg_sd = basal_lg_sd*HEC_TO_M2/plotsize     ! m2/ha
+        basal_sm_mn = basal_sm_mn*HEC_TO_M2/plotsize     ! m2/ha
+        basal_sm_sd = basal_sm_sd*HEC_TO_M2/plotsize     ! m2/ha
+        dens_lg_mn = dens_lg_mn*HEC_TO_M2/plotsize       ! trees/ha
+        dens_lg_sd = dens_lg_sd*HEC_TO_M2/plotsize       ! trees/ha
+        dens_sm_mn = dens_sm_mn*HEC_TO_M2/plotsize       ! trees/ha
+        dens_sm_sd = dens_sm_sd*HEC_TO_M2/plotsize       ! trees/ha
 
+        !trees/ha and tC/ha
+        tot_diam_cats = tot_diam_cats*HEC_TO_M2/plotsize/float(site%numplots)
+        tot_biom_cats = tot_biom_cats*HEC_TO_M2/plotsize/float(site%numplots)
 
-		plot_mean_biomc = plotscale*plot_mean_biomc
-		plot_std_biomc = plotscale*plot_std_biomc
-		plotlevel_biomn = plotscale*biomn
-		plot_mean_biomn = plotscale*plot_mean_biomn
-		plot_std_biomn = plotscale*plot_std_biomn
-		plot_mean_basal = plot_mean_basal/plotsize*hec_to_m2*0.0001
-		plot_std_basal = plot_std_basal/plotsize*hec_to_m2*0.0001
+		! Write to csv
+		do is = 1, num_types
 
-		!write to csv
-		do is = 1, species_pres%numgenera
-			call csv_write(biom_by_g, iwmo, .false.)
-			call csv_write(biom_by_g, site%runID, .false.)
-			call csv_write(biom_by_g, year, .false.)
-			call csv_write(biom_by_g,                                          &
-				trim(adjustl(species_pres%genusgroups(is))), .false.)
+            ! We write lines out for every species/genus, but write -999.0s
+            ! to ones not 'present'
+			call csv_write(funit, site%site_id, .false.)
+			call csv_write(funit, site%runID, .false.)
+			call csv_write(funit, year, .false.)
 
-			if (in_site(is)) then
+            ! Get species/genus name
+            if (field == 'genus') then
+                comp = trim(adjustl(species_pres%genusgroups(is)))
+    			call csv_write(funit, comp, .false.)
+            else
+                genname = trim(adjustl(species_pres%spec_names(is,1)))
+                comp = trim(adjustl(species_pres%spec_names(is, 2)))
+                call csv_write(funit, genname, .false.)
+    			call csv_write(funit, comp, .false.)
+            end if
 
-				total_basal(is) = total_basal(is)*plotadj*0.0001
-				total_laibm(is) = total_laibm(is)*plotrenorm
-				total_biomc(is) = total_biomc(is)*plotadj
-				total_biomn(is) = total_biomn(is)*plotadj*10.0
-				total_dm_cats(is, :) = total_dm_cats(is, :)*plotadj
-				total_biom_cats(is, :) = total_biom_cats(is, :)*plotadj
-				total_envi_resp(is, :) = total_envi_resp(is, :)/numplots
+            if (in_site(is)) then
 
-			    call csv_write(biom_by_g, total_dm_cats(is, 1), .false.)
-			    call csv_write(biom_by_g, total_dm_cats(is, 2), .false.)
-			    call csv_write(biom_by_g, total_dm_cats(is, 3), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 4), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 5), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 6), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 7), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 8), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 9), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 10), .false.)
-				call csv_write(biom_by_g, total_dm_cats(is, 11), .false.)
+                ns = spec_index(is)
 
-				call csv_write(biom_by_g, total_biom_cats(is, 1), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 2), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 3), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 4), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 5), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 6), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 7), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 8), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 9), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 10), .false.)
-				call csv_write(biom_by_g, total_biom_cats(is, 11), .false.)
+                ! Convert to LAI
+                tot_leafbm(is) = tot_leafbm(is)/                               &
+                    (site%species(ns)%leafarea_c*  2.0)
+                tot_leafbm_sd(is) = tot_leafbm_sd(is)/                         &
+                    (site%species(ns)%leafarea_c*2.0)
 
-				call csv_write(biom_by_g, plot_env_resp_mn(is, 1), .false.)
-				call csv_write(biom_by_g, plot_env_resp_mn(is, 2), .false.)
-				call csv_write(biom_by_g, plot_env_resp_mn(is, 3), .false.)
-				call csv_write(biom_by_g, plot_env_resp_mn(is, 4), .false.)
-				call csv_write(biom_by_g, plot_env_resp_mn(is, 5), .false.)
-				call csv_write(biom_by_g, plot_env_resp_mn(is, 6), .false.)
-
-				call csv_write(biom_by_g, plot_mean_Maxdbh(is), .false.)
-				call csv_write(biom_by_g, plot_mean_dbh(is), .false.)
-				call csv_write(biom_by_g, plot_mean_year(is), .false.)
-				call csv_write(biom_by_g, plot_mean_Maxht(is), .false.)
-				call csv_write(biom_by_g, total_laibm(is), .false.)
-				call csv_write(biom_by_g, total_basal(is), .false.)
-				call csv_write(biom_by_g, plot_std_basal(is), .false.)
-				call csv_write(biom_by_g, total_biomc(is),.false.)
-				call csv_write(biom_by_g, plot_std_biomc(is), .true.)
-
+                ! Write out the data
+                do l = 1, NHC
+                    call csv_write(funit, tot_diam_cats(is, l), .false.)
+                end do
+                do l = 1, NHC
+                    call csv_write(funit, tot_biom_cats(is, l), .false.)
+                end do
+                do l = 1, FC_NUM
+                    call csv_write(funit, env_resp_mn(is, l), .false.)
+                end do
+				call csv_write(funit, max_diam_mn(is), .false.)
+				call csv_write(funit, mean_diam_mn(is), .false.)
+				call csv_write(funit, age_mn(is), .false.)
+				call csv_write(funit, max_ht_mn(is), .false.)
+				call csv_write(funit, tot_leafbm(is), .false.)
+				call csv_write(funit, tot_basal(is), .false.)
+				call csv_write(funit, tot_basal_sd(is), .false.)
+				call csv_write(funit, tot_biomC(is), .false.)
+				call csv_write(funit, tot_biomC_sd(is), .false.)
+                call csv_write(funit, biomC_lg_mn(is), .false.)
+                call csv_write(funit, biomC_lg_sd(is), .false.)
+                call csv_write(funit, biomC_sm_mn(is), .false.)
+                call csv_write(funit, biomC_sm_sd(is), .false.)
+                call csv_write(funit, basal_lg_mn(is), .false.)
+                call csv_write(funit, basal_lg_sd(is), .false.)
+                call csv_write(funit, basal_sm_mn(is), .false.)
+                call csv_write(funit, basal_sm_sd(is), .false.)
+                call csv_write(funit, dens_lg_mn(is), .false.)
+                call csv_write(funit, dens_lg_sd(is), .false.)
+                call csv_write(funit, dens_sm_mn(is), .false.)
+                call csv_write(funit, dens_sm_sd(is), .false.)
+                call csv_write(funit, dbh_lg_mn(is), .false.)
+                call csv_write(funit, dbh_lg_sd(is), .false.)
+                call csv_write(funit, dbh_sm_mn(is), .false.)
+                call csv_write(funit, dbh_sm_sd(is), .true.)
 			else
-
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .false.)
-				call csv_write(biom_by_g, rnvalid, .true.)
-
-			endif
-
-		enddo
-
-		!write plot-level data if turned on
-		if (plot_level_data) then
-
-			do ip = 1, site%numplots
-				do is = 1, species_pres%numgenera
-					call csv_write(pl_biom_by_g, iwmo, .false.)
-					call csv_write(pl_biom_by_g, site%runID, .false.)
-					call csv_write(pl_biom_by_g, year, .false.)
-					call csv_write(pl_biom_by_g, ip, .false.)
-					call csv_write(pl_biom_by_g,                               &
-						trim(adjustl(species_pres%genusgroups(is))), .false.)
-
-					if (in_site(is)) then
-
-						diam_categories(ip, is, :) =                           &
-							diam_categories(ip, is, :)*plotscale
-
-						biom_categories(ip, is, :) =                           &
-							biom_categories(ip, is, :)*plotscale
-
-						ns = spec_index(is)
-						leaf_area(ip, is) = leaf_bm(ip, is)/                   &
-							(site%plots(ip)%species(ns)%leafarea_c*2.0)/plotsize
-
-
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 1), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 2), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 3), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 4), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 5), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 6), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 7), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 8), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 9), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 10), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							diam_categories(ip, is, 11), .false.)
-
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 1), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 2), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 3), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 4), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 5), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 6), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 7), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 8), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 9), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 10), .false.)
-						call csv_write(pl_biom_by_g,                           &
-							biom_categories(ip, is, 11), .false.)
-
-						call csv_write(pl_biom_by_g, max_diam(ip, is), .false.)
-						call csv_write(pl_biom_by_g, mean_dbh(ip, is), .false.)
-						call csv_write(pl_biom_by_g, max_ht(ip, is), .false.)
-						call csv_write(pl_biom_by_g, leaf_area(ip, is), .false.)
-						call csv_write(pl_biom_by_g, plotlevel_basal(ip, is),  &
-							.false.)
-						call csv_write(pl_biom_by_g, plotlevel_biomc(ip, is),  &
-							.true.)
-
-					else
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .false.)
-						call csv_write(pl_biom_by_g, rnvalid, .true.)
-					endif
-				enddo
-			enddo
-		endif
-
-	end subroutine write_genus_data
-
-	!:.........................................................................:
-
-	subroutine write_species_data(site, species_pres, year)
-		!writes species-level data to Species_Data.csv file and
-		  !Plot_Species_Data.csv if plot-level output turned on
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs:
-		!	site:         site instance
-		!	species_pres: species present at site
-		!	year:         simulation year
-
-		type(SiteData),   intent(in)            :: site
-		type(Groups),     intent(in)            :: species_pres
-		integer,          intent(in)            :: year
-
-		integer, dimension(site%numplots, species_pres%numspecies, NHC) :: diam_categories
-		real,    dimension(site%numplots, species_pres%numspecies, NHC) :: biom_categories
-		real,    dimension(site%numplots, species_pres%numspecies, 6)   :: envi_resp
-		real,    dimension(site%numplots, species_pres%numspecies) :: biomC,   &
-																	  basal_area, &
-                                                                      biomN,   &
-                                                                      leaf_bm, &
-                                                                      leaf_area, &
-                                                                      max_ht,  &
-                                                                      max_diam, &
-                                                                      plotlevel_biomc, &
-                                                                      plotlevel_biomn, &
-                                                                      plotlevel_basal, &
-                                                                      mean_dbh, &
-                                                                      mean_year
-		real,    dimension(species_pres%numspecies, NHC) :: total_dm_cats
-		real,    dimension(species_pres%numspecies, NHC) :: total_biom_cats
-		real,    dimension(species_pres%numspecies, 6)   :: total_envi_resp
-		real,    dimension(species_pres%numspecies)      :: total_biomc,       &
-                                                            total_biomn,       &
-                                                            total_basal,       &
-                                                            total_laibm,       &
-                                                            total_max_ht,      &
-                                                            total_max_diam,    &
-                                                            plot_mean_biomc,   &
-                                                            plot_std_biomc,    &
-                                                            plot_mean_biomn,   &
-                                                            plot_std_biomn,    &
-                                                            plot_mean_basal,   &
-                                                            plot_std_basal,    &
-                                                            plot_mean_dbh,     &
-                                                            plot_std_dbh,      &
-                                                            plot_mean_year,    &
-                                                            plot_std_year,     &
-                                                            plot_mean_Maxdbh,  &
-                                                            plot_std_Maxdbh,   &
-                                                            plot_mean_Maxht,   &
-                                                            plot_std_Maxht
-        real,   dimension(species_pres%numspecies, 6)    :: plot_env_resp_mn,  &
-												            plot_env_resp_sd
-
-		integer, dimension(species_pres%numspecies)      :: spec_index
-		logical, dimension(species_pres%numspecies)      :: in_site
-
-		character(len = 8)                               :: field = 'species'
-		integer                                          :: iwmo
-		integer                                          :: ip, is, ns, l
-
-		plotscale = hec_to_m2/plotsize
-		plotadj = plotscale/float(site%numplots)
-		plotrenorm = 1.0/plotsize/float(site%numplots)
-
-		iwmo = site%site_id
-
-		!check which species are in the site
-		in_site = .false.
-		do is = 1, species_pres%numspecies
-			do ip = 1, site%numplots
-				do ns = 1, size(site%plots(ip)%species)
-					if (species_pres%spec_names(is, 2) .eq.                    &
-							site%plots(ip)%species(ns)%unique_id) then
-						in_site(is) = .true.
-						spec_index(is) = ns
-						exit
-					endif
-				enddo
-			enddo
-		enddo
-
-		!get individual plot-level data
-		do ip = 1, site%numplots
-			call sum_over_sg(site%plots(ip), species_pres%spec_names(:, 2),    &
-							field, basal_area(ip, :), leaf_bm(ip, :),          &
-							biomC(ip, :), biomN(ip, :), max_ht(ip, :),         &
-							max_diam(ip, :), mean_dbh(ip, :),                  &
-							mean_year(ip, :), biom_categories(ip, :, :),       &
-							envi_resp(ip, :, :))
-
-			call tree_dm_cats(site%plots(ip), species_pres%spec_names(:, 2),   &
-							field, diam_categories(ip, :, :))
-		enddo
-
-		total_biomc = 0.0
-		total_biomn = 0.0
-		total_basal = 0.0
-		total_laibm = 0.0
-		total_max_ht = 0.0
-		total_max_diam = 0.0
-
-		plotlevel_biomc = rnvalid
-		plotlevel_biomn = rnvalid
-		plotlevel_basal = rnvalid
-
-		total_dm_cats = 0
-		total_biom_cats = 0.0
-		total_envi_resp = 0.0
-
-		!accumulate data across plots
-		do is = 1, species_pres%numspecies
-			if (in_site(is)) then
-
-				ns = spec_index(is)
-
-				do ip = 1, site%numplots
-
-					total_biomc(is) = total_biomc(is) + biomc(ip, is)
-					total_biomn(is) = total_biomn(is) + biomn(ip, is)
-
-					total_basal(is) = total_basal(is) +  basal_area(ip, is)
-					total_laibm(is) = total_laibm(is) +  leaf_bm(ip, is)/      &
-                         (site%plots(ip)%species(ns)%leafarea_c*2.0)
-					total_max_ht(is) = max(total_max_ht(is), max_ht(ip, is))
-					total_max_diam(is) = max(total_max_diam(is),               &
-						max_diam(ip, is))
-					total_dm_cats(is, :) = total_dm_cats(is, :) +              &
-						float(diam_categories(ip, is, :))
-					total_biom_cats(is, :) = total_biom_cats(is, :) +          &
-						biom_categories(ip, is, :)
-					total_envi_resp(is, :) = total_envi_resp(is, :) +          &
-						envi_resp(ip, is, :)
-				enddo
-			endif
-
-			!calculate standard deviations of data
-			call stddev(basal_area(:, is), plot_mean_basal(is),                &
-				plot_std_basal(is), rnvalid)
-			call stddev(biomc(:, is), plot_mean_biomc(is),                     &
-                plot_std_biomc(is), rnvalid)
-			call stddev(biomn(:, is), plot_mean_biomn(is),                     &
-                plot_std_biomn(is), rnvalid)
-			call stddev(mean_dbh(:, is), plot_mean_dbh(is),                    &
-				plot_std_dbh(is), rnvalid)
-			call stddev(mean_year(:, is), plot_mean_year(is),                  &
-				plot_std_year(is), rnvalid)
-			call stddev(max_diam(:, is), plot_mean_Maxdbh(is),                 &
-				plot_std_Maxdbh(is), rnvalid)
-			call stddev(max_ht(:, is), plot_mean_Maxht(is),                    &
-				plot_std_Maxht(is), rnvalid)
-
-			do l = 1, 6
-				call stddev(envi_resp(:, is, l), plot_env_resp_mn(is, l),      &
-					plot_env_resp_sd(is, l), rnvalid)
-			end do
-
-		enddo
-
-		!convert values to per ha
-		plotlevel_biomc = plotscale*biomc !tC/ha
-		plotlevel_basal = plotscale*basal_area*0.0001 !m2/ha
-		plotlevel_biomn = plotscale*biomn !tN/ha
-
-		plot_mean_biomc = plotscale*plot_mean_biomc !tC/ha
-		plot_std_biomc = plotscale*plot_std_biomc !tC/ha
-
-
-		plot_mean_biomn = plotscale*plot_mean_biomn !tN/ha
-		plot_std_biomn = plotscale*plot_std_biomn !tN/ha
-
-		plot_mean_basal = plot_mean_basal*plotscale*0.0001 !m2/ha
-		plot_std_basal = plot_std_basal*plotscale*0.0001 !m2/ha
-
-		!write to csv
-		do is = 1, species_pres%numspecies
-
-			call csv_write(biom_by_s, iwmo, .false.)
-			call csv_write(biom_by_s, site%runID, .false.)
-			call csv_write(biom_by_s, year, .false.)
-			call csv_write(biom_by_s,                                          &
-				trim(adjustl(species_pres%spec_names(is, 1))), .false.)
-			call csv_write(biom_by_s,                                          &
-				trim(adjustl(species_pres%spec_names(is, 2))), .false.)
-
-			if (in_site(is)) then
-
-				total_basal(is) = total_basal(is)*plotadj*0.0001
-				total_laibm(is) = total_laibm(is)*plotrenorm
-				total_biomc(is) = total_biomc(is)*plotadj
-				total_biomn(is) = total_biomn(is)*plotadj*10.0
-
-				total_dm_cats(is, :) = total_dm_cats(is, :)*plotadj
-				total_biom_cats(is, :) = total_biom_cats(is, :)*plotadj
-				total_envi_resp(is, :) = total_envi_resp(is, :)/numplots
-
-				call csv_write(biom_by_s, total_dm_cats(is, 1), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 2), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 3), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 4), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 5), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 6), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 7), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 8), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 9), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 10), .false.)
-				call csv_write(biom_by_s, total_dm_cats(is, 11), .false.)
-
-				call csv_write(biom_by_s, total_biom_cats(is, 1), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 2), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 3), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 4), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 5), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 6), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 7), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 8), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 9), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 10), .false.)
-				call csv_write(biom_by_s, total_biom_cats(is, 11), .false.)
-
-				call csv_write(biom_by_s, plot_env_resp_mn(is, 1), .false.)
-				call csv_write(biom_by_s, plot_env_resp_mn(is, 2), .false.)
-				call csv_write(biom_by_s, plot_env_resp_mn(is, 3), .false.)
-				call csv_write(biom_by_s, plot_env_resp_mn(is, 4), .false.)
-				call csv_write(biom_by_s, plot_env_resp_mn(is, 5), .false.)
-				call csv_write(biom_by_s, plot_env_resp_mn(is, 6), .false.)
-
-				call csv_write(biom_by_s, plot_mean_Maxdbh(is), .false.)
-				call csv_write(biom_by_s, plot_mean_dbh(is), .false.)
-				call csv_write(biom_by_s, plot_mean_year(is), .false.)
-				call csv_write(biom_by_s, plot_mean_Maxht(is), .false.)
-				call csv_write(biom_by_s, total_laibm(is), .false.)
-				call csv_write(biom_by_s, total_basal(is), .false.)
-				call csv_write(biom_by_s, plot_std_basal(is), .false.)
-				call csv_write(biom_by_s, total_biomc(is), .false.)
-				call csv_write(biom_by_s, plot_std_biomc(is), .true.)
-
-			else
-
-			    call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .false.)
-				call csv_write(biom_by_s, rnvalid, .true.)
-
-			endif
-
-		enddo
-
-		!write plot-level data if turned on
-		if (plot_level_data) then
-
-			do ip = 1, site%numplots
-				do is = 1, species_pres%numspecies
-					call csv_write(pl_biom_by_s, iwmo, .false.)
-					call csv_write(pl_biom_by_s, site%runID, .false.)
-					call csv_write(pl_biom_by_s, year, .false.)
-					call csv_write(pl_biom_by_s, ip, .false.)
-					call csv_write(pl_biom_by_s,                               &
-						trim(adjustl(species_pres%spec_names(is, 1))), .false.)
-					call csv_write(pl_biom_by_s,                               &
-						trim(adjustl(species_pres%spec_names(is, 2))), .false.)
-
-					if (in_site(is)) then
-
-						biom_categories(ip, is, :) =                           &
-							biom_categories(ip, is, :)*plotscale
-
-						diam_categories(ip, is, :) =                           &
-							diam_categories(ip, is, :)*plotscale
-
-						ns = spec_index(is)
-						leaf_area(ip, is) = leaf_bm(ip, is)/                   &
-							(site%plots(ip)%species(ns)%leafarea_c*2.0)/plotsize
-
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 1), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 2), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 3), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 4), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 5), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 6), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 7), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 8), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 9), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 10), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							diam_categories(ip, is, 11), .false.)
-
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 1), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 2), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 3), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 4), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 5), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 6), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 7), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 8), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 9), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 10), .false.)
-						call csv_write(pl_biom_by_s,                           &
-							biom_categories(ip, is, 11), .false.)
-
-						call csv_write(pl_biom_by_s, max_diam(ip, is), .false.)
-						call csv_write(pl_biom_by_s, mean_dbh(ip, is), .false.)
-						call csv_write(pl_biom_by_s, max_ht(ip, is), .false.)
-						call csv_write(pl_biom_by_s, leaf_area(ip, is), .false.)
-						call csv_write(pl_biom_by_s, plotlevel_basal(ip, is),  &
-							.false.)
-						call csv_write(pl_biom_by_s, plotlevel_biomc(ip, is),  &
-							.true.)
-					else
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .false.)
-						call csv_write(pl_biom_by_s, rnvalid, .true.)
-					endif
-
-				enddo
-			enddo
-
-		endif
-
-	end subroutine write_species_data
-
-	!:.........................................................................:
-
-	subroutine write_dead_genus_data(site, species_pres, year)
-		!writes dead genus-level data to Dead_Genus_Data.csv and to
-		  !Plotlevel_Dead_Genus.csv if turned on
-		!Authors: Adrianna Foster and Jacquelyn Shuman 2015, v. 1.0
-		!Inputs:
-		!	site:         site instance
-		!	species_pres: species present at site
-		!	year:         simulation year
-
-		type(SiteData),   intent(in)            :: site
-		type(Groups),     intent(in)            :: species_pres
-		integer,          intent(in)            :: year
-
-		integer, dimension(site%numplots, species_pres%numgenera, NHC) :: diam_categories
-		real,    dimension(site%numplots, species_pres%numgenera, 8)   :: d_markers
-		real,    dimension(site%numplots, species_pres%numgenera) ::   biomC,  &
-                                                                       plotlevel_biomc, &
-                                                                       mean_dbh
-		integer, dimension(species_pres%numgenera, NHC) :: total_dm_cats
-		real,    dimension(species_pres%numgenera, 8)   :: total_mort_markers
-
-		real,    dimension(species_pres%numgenera)      :: total_biomc,        &
-													       plot_mean_biomc,    &
-                                                           plot_std_biomc,     &
-                                                           plot_mean_dbh,      &
-                                                           plot_std_dbh
-
-		integer, dimension(species_pres%numspecies)     :: spec_index
-		logical, dimension(species_pres%numgenera)      :: in_site
-		character(len = 8)                              :: field='genus'
-		integer                                         :: iwmo
-		integer                                         :: ip, is, ns
-
-		plotscale = hec_to_m2/plotsize
-		plotadj = plotscale/float(site%numplots)
-		plotrenorm = 1.0/plotsize/float(site%numplots)
-
-		iwmo = site%site_id
-
-		!check if in site
-		in_site = .false.
-		do is = 1, species_pres%numgenera
-			do ip = 1, site%numplots
-				do ns = 1, size(site%plots(ip)%species)
-					if (species_pres%genusgroups(is) .eq.                      &
-							site%plots(ip)%species(ns)%genus_name) then
-						spec_index(is) = ns
-						in_site(is) = .true.
-						exit
-					endif
-				enddo
-			enddo
-		enddo
-
-		!get individual plot data
-		do ip = 1, site%numplots
-			call sum_over_deadsg(site%plots(ip), species_pres%genusgroups,     &
-				field, biomC(ip, :), mean_dbh(ip, :), d_markers(ip, :, :))
-
-			call tree_dm_cats(site%plots(ip), species_pres%genusgroups,        &
-				field, diam_categories(ip, :, :))
-		enddo
-
-		total_biomc = 0.0
-		plotlevel_biomc = rnvalid
-		total_dm_cats = 0
-		total_mort_markers = 0
-
-		do is = 1, species_pres%numgenera
-			do ip = 1, site%numplots
-				if (in_site(is)) then
-					ns = spec_index(is)
-					total_biomc(is) = total_biomc(is) + biomc(ip,is)
-					total_dm_cats(is, :) = total_dm_cats(is, :) +              &
-						diam_categories(ip, is, :)
-					total_mort_markers(is, :) = total_mort_markers(is, :) +    &
-						d_markers(ip, is, :)
-				endif
-			enddo
-
-			!calculate standard deviation of data
-			call stddev(biomc(:, is), plot_mean_biomc(is), plot_std_biomc(is), &
-				rnvalid)
-			call stddev(mean_dbh(:, is), plot_mean_dbh(is), plot_std_dbh(is),  &
-				rnvalid)
-		enddo
-
-		!convert values to per ha
-		plotlevel_biomc = plotscale*biomc
-		plot_mean_biomc = plotscale*plot_mean_biomc
-		plot_std_biomc = plotscale*plot_std_biomc
-
-		!write to csv
-		do is = 1, species_pres%numgenera
-
-			call csv_write(dead_g, iwmo, .false.)
-			call csv_write(dead_g, site%runID, .false.)
-			call csv_write(dead_g, year, .false.)
-			call csv_write(dead_g,                                             &
-				trim(adjustl(species_pres%genusgroups(is))), .false.)
-
-			if (in_site(is)) then
-
-				total_biomc(is) = total_biomc(is)*plotadj
-				total_mort_markers(is, :) = total_mort_markers(is, :)*plotadj
-
-				call csv_write(dead_g, total_mort_markers(is, 1), .false.)
-				call csv_write(dead_g, total_mort_markers(is, 2), .false.)
-				call csv_write(dead_g, total_mort_markers(is, 3), .false.)
-				call csv_write(dead_g, total_mort_markers(is, 4), .false.)
-				call csv_write(dead_g, total_mort_markers(is, 5), .false.)
-				call csv_write(dead_g, total_mort_markers(is, 6), .false.)
-				call csv_write(dead_g, total_mort_markers(is, 7), .false.)
-				call csv_write(dead_g, total_mort_markers(is, 8), .false.)
-				call csv_write(dead_g, plot_mean_dbh(is), .false.)
-				call csv_write(dead_g, total_biomc(is), .false.)
-				call csv_write(dead_g, plot_std_biomc(is), .true.)
-
-			else
-
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .false.)
-                call csv_write(dead_g, rnvalid, .false.)
-				call csv_write(dead_g, rnvalid, .true.)
-
+				! Write -999.0s
+                do l = 1, 52
+                    call csv_write(funit, RNVALID, .false.)
+                end do
+                call csv_write(funit, RNVALID, .true.)
 			endif
 		enddo
 
@@ -1368,249 +591,262 @@ contains
 
 			do ip = 1, site%numplots
 				do is = 1, species_pres%numgenera
-					call csv_write(dead_pg, iwmo,.false.)
-					call csv_write(dead_pg, site%runID, .false.)
-					call csv_write(dead_pg, year, .false.)
-					call csv_write(dead_pg, ip, .false.)
-					call csv_write(dead_pg,                                    &
-						trim(adjustl(species_pres%genusgroups(is))), .false.)
+
+                    ! We write lines out for every species/genus, but write
+                    ! -999.0s to ones not 'present'
+					call csv_write(funit_p, site%site_id, .false.)
+					call csv_write(funit_p, site%runID, .false.)
+					call csv_write(funit_p, year, .false.)
+					call csv_write(funit_p, ip, .false.)
+
+                    ! Get species/genus name
+                    if (field == 'genus') then
+                        comp = trim(adjustl(species_pres%genusgroups(is)))
+            			call csv_write(funit, comp, .false.)
+                    else
+                        genname = trim(adjustl(species_pres%spec_names(is,1)))
+                        comp = trim(adjustl(species_pres%spec_names(is, 2)))
+                        call csv_write(funit, genname, .false.)
+            			call csv_write(funit, comp, .false.)
+                    end if
 
 					if (in_site(is)) then
 
-						d_markers(ip, is, :) = d_markers(ip, is, :)*plotscale
+                        ! Convert some units
+						diam_cats(ip,is,:) = diam_cats(ip,is,:)*               &
+                            HEC_TO_M2/plotsize
+						biom_cats(ip,is,:) =                                   &
+							biom_cats(ip,is,:)*HEC_TO_M2/plotsize
 
-						call csv_write(dead_pg, d_markers(ip, is, 1), .false.)
-						call csv_write(dead_pg, d_markers(ip, is, 2), .false.)
-						call csv_write(dead_pg, d_markers(ip, is, 3), .false.)
-						call csv_write(dead_pg, d_markers(ip, is, 4), .false.)
-						call csv_write(dead_pg, d_markers(ip, is, 5), .false.)
-						call csv_write(dead_pg, d_markers(ip, is, 6), .false.)
-						call csv_write(dead_pg, d_markers(ip, is, 7), .false.)
-						call csv_write(dead_pg, d_markers(ip, is, 8), .false.)
-						call csv_write(dead_pg, mean_dbh(ip, is), .false.)
-						call csv_write(dead_pg, plotlevel_biomc(ip, is), .true.)
+                        do l = 1, NHC
+                            call csv_write(funit_p, diam_cats(ip, is, l),      &
+                                .false.)
+                        end do
+                        do l = 1, NHC
+                            call csv_write(funit_p, biom_cats(ip, is, l),      &
+                                .false.)
+                        end do
+						call csv_write(funit_p, max_diam(ip, is), .false.)
+						call csv_write(funit_p, mean_diam(ip, is), .false.)
+						call csv_write(funit_p, max_ht(ip, is), .false.)
+						call csv_write(funit_p, basal_area(ip, is), .false.)
+						call csv_write(funit_p, biomC(ip, is), .true.)
 
 					else
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .false.)
-						call csv_write(dead_pg, rnvalid, .true.)
+                        ! Write -999.0s
+                        do l = 1, 26
+						    call csv_write(funit_p, RNVALID, .false.)
+                        end do
+                        call csv_write(funit_p, RNVALID, .true.)
 					endif
-
 				enddo
 			enddo
 		endif
 
-	end subroutine write_dead_genus_data
+	end subroutine write_genus_or_species_data
 
 	!:.........................................................................:
 
-	subroutine write_dead_species_data(site, species_pres, year)
-		!writes dead species-level data to Dead_Species_Data.csv and
-		  !to Plotlevel_Dead_Species.csv if turned on
-		!Authors: Adrianna Foster and Jacquelyn Shuman 2015, v. 1.0
-		!Inputs:
-		!	site:         site instance
-		!	species_pres: species present at site
-		!	year:         simulation year
+	subroutine write_dead_genus_or_species_data(site, species_pres, year,      &
+        field, num_types, funit, funit_p)
+        !
+        !  Writes dead species- or genus- level data to output
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/15     A. C. Foster        Original code
+        !                 J. K. Shuman
+        !    01/30/21     A. C. Foster        Update to write either species
+        !                                         or genus data
 
-		type(SiteData),   intent(in)                :: site
-		type(Groups),     intent(in)                :: species_pres
-		integer,          intent(in)                :: year
+        ! Data dictionary: calling arguments
+		type(SiteData),     intent(in) :: site         ! Site object
+		type(Groups),       intent(in) :: species_pres ! List of genus and species names
+		integer,            intent(in) :: year         ! Simulation year
+        character(len = 8), intent(in) :: field        ! 'genus' or 'species'
+        integer,            intent(in) :: num_types    ! Number of species or genera
+        integer,            intent(in) :: funit        ! File unit for output file
+        integer,            intent(in) :: funit_p      ! File unit for plot-level output file
 
-		real,    dimension(site%numplots, species_pres%numspecies, 8) :: d_markers
+        ! Data dictionary: local variables
+        character(len=MAX_NLEN), dimension(num_types)         :: genera        ! Species/genus names
+        real,    dimension(site%numplots, num_types, M_TYPES) :: d_markers     ! Causes of mortality (tC)
+        real,    dimension(site%numplots, num_types)          :: biomC         ! Aboveground biomass (tC)
+        real,    dimension(site%numplots, num_types)          :: mean_diam     ! Average diameter (cm)
+        real,    dimension(num_types, M_TYPES)                :: tot_d_markers ! Average causes of mortality (tC/ha)
+        real,    dimension(num_types)                         :: tot_biomC     ! Average aboveground biomass (tC/ha)
+        real,    dimension(num_types)                         :: tot_biomC_sd  ! SD aboveground biomass (tC/ha)
+        real,    dimension(num_types)                         :: mean_diam_mn  ! Average diameter (cm)
+        real,    dimension(num_types)                         :: mean_diam_sd  ! SD of diameter (cm)
+        integer, dimension(num_types)                         :: spec_index    ! Location of present species/genera
+		logical, dimension(num_types)                         :: in_site       ! Is the species/genus in the site?
+        character(len=MAX_NLEN)                               :: comp          ! Species/genus name
+        character(len=MAX_NLEN)                               :: genname       ! Genus name
+		integer                                               :: ip, is, ns, l ! Looping indices
 
-		real,    dimension(site%numplots, species_pres%numspecies) :: biomC,   &
-                                                                      plotlevel_biomc, &
-                                                                      mean_dbh
+        ! Get either genera or species
+        if (field == 'genus') then
+            genera = species_pres%genusgroups
+        else if (field == 'species') then
+            genera = species_pres%spec_names(:, 2)
+        end if
 
-
-		real,    dimension(species_pres%numspecies, 8)   :: total_mort_markers
-		real,    dimension(species_pres%numspecies)                            &
-												         :: total_biomc,       &
-                                                            plot_mean_biomc,   &
-                                                            plot_std_biomc,    &
-                                                            plot_mean_dbh,     &
-                                                            plot_std_dbh
-
-		integer, dimension(species_pres%numspecies)      :: spec_index
-		logical, dimension(species_pres%numspecies)      :: in_site
-		character(len = 8)                               :: field = 'species'
-		integer                                          :: iwmo
-		integer                                          :: ip, is, ns, il
-
-		plotscale = hec_to_m2/plotsize
-		plotadj = plotscale/float(site%numplots)
-		plotrenorm = 1.0/plotsize/float(site%numplots)
-
-		iwmo = site%site_id
-
-		!check which species are in site
+	    ! Check to see which species/genera are in the site
 		in_site = .false.
-		do is = 1, species_pres%numspecies
+		do is = 1, num_types
 			do ip = 1, site%numplots
-				do ns = 1, size(site%plots(ip)%species)
-					if (species_pres%spec_names(is, 2) .eq.                    &
-							site%plots(ip)%species(ns)%unique_id) then
-						in_site(is) = .true.
+				do ns = 1, size(site%species)
+                    if (field == 'genus') then
+                        comp = site%species(ns)%genus_name
+                    else
+                        comp = site%species(ns)%unique_id
+                    end if
+					if (genera(is) == comp) then
 						spec_index(is) = ns
+						in_site(is) = .true.
 						exit
 					endif
 				enddo
 			enddo
 		enddo
 
-		!get individual plot data
+		! Get individual plot data for each genus
 		do ip = 1, site%numplots
-			call sum_over_deadsg(site%plots(ip),                               &
-				species_pres%spec_names(:, 2), field, biomC(ip, :),            &
-				mean_dbh(ip, :), d_markers(ip, :, :))
+			call sum_over_deadsg(site%plots(ip), genera, field, biomC(ip, :),  &
+                mean_diam(ip, :), d_markers(ip, :, :))
 		enddo
 
-		total_biomc = 0.0
-		plotlevel_biomc = 0.0
-		total_mort_markers = 0.0
+        tot_biomC = RNVALID
+        tot_d_markers = 0.0
 
-		!accumulate across plots
-		do is = 1, species_pres%numspecies
-			if (in_site(is)) then
-				ns = spec_index(is)
-				do ip = 1, site%numplots
-					total_biomc(is) = total_biomc(is) + biomc(ip, is)
+		! Accumulate across-plot data
+		do is = 1, num_types
+            do ip = 1, site%numplots
+                if (in_site(is)) then
+                    tot_d_markers(is, :) = tot_d_markers(is, :) +              &
+                        d_markers(ip, is, :)
+                endif
+            enddo
 
-					do il = 1, 8
-						total_mort_markers(is, il) =                           &
-							total_mort_markers(is, il) + d_markers(ip, is, il)
-					end do
-				end do
-			end if
-
-			!calculate mean and standard deviations of data
-			call stddev(biomc(:, is), plot_mean_biomc(is), plot_std_biomc(is), &
-				rnvalid)
-			call stddev(mean_dbh(:, is), plot_mean_dbh(is), plot_std_dbh(is),  &
-				rnvalid)
+            ! Get mean and standard deviation of data
+			call stddev(biomC(:, is), tot_biomC(is), tot_biomC_sd(is), RNVALID)
+			call stddev(mean_diam(:, is), mean_diam_mn(is), mean_diam_sd(is),  &
+				RNVALID)
 		enddo
 
-		!convert values to per ha
-		plotlevel_biomc = plotscale*biomc
-		plot_mean_biomc = plotscale*plot_mean_biomc
-		plot_std_biomc = plotscale*plot_std_biomc
+        ! Convert to correct units
+        tot_biomC = tot_biomC*HEC_TO_M2/plotsize       ! tC/ha
+        tot_biomC_sd = tot_biomC_sd*HEC_TO_M2/plotsize ! tC/ha
 
-		!write to csv
-		do is = 1, species_pres%numspecies
-			call csv_write(dead_s, iwmo, .false.)
-			call csv_write(dead_s, site%runID, .false.)
-			call csv_write(dead_s, year, .false.)
-			call csv_write(dead_s,                                             &
-				trim(adjustl(species_pres%spec_names(is, 1))), .false.)
-			call csv_write(dead_s,                                             &
-				trim(adjustl(species_pres%spec_names(is, 2))), .false.)
+        ! tC/ha
+        tot_d_markers = tot_d_markers*HEC_TO_M2/plotsize/float(site%numplots)
 
-			if (in_site(is)) then
+		! Write to csv
+		do is = 1, num_types
 
-				total_biomc(is) = total_biomc(is)*plotadj
-				total_mort_markers(is, :) =  total_mort_markers(is, :)*plotadj
+            ! We write lines out for every species/genus, but write -999.0s
+            ! to ones not 'present'
+			call csv_write(funit, site%site_id, .false.)
+			call csv_write(funit, site%runID, .false.)
+			call csv_write(funit, year, .false.)
 
-				call csv_write(dead_s, total_mort_markers(is, 1), .false.)
-				call csv_write(dead_s, total_mort_markers(is, 2), .false.)
-				call csv_write(dead_s, total_mort_markers(is, 3), .false.)
-				call csv_write(dead_s, total_mort_markers(is, 4), .false.)
-				call csv_write(dead_s, total_mort_markers(is, 5), .false.)
-				call csv_write(dead_s, total_mort_markers(is, 6), .false.)
-				call csv_write(dead_s, total_mort_markers(is, 7), .false.)
-				call csv_write(dead_s, total_mort_markers(is, 8), .false.)
+            ! Get species/genus name
+            if (field == 'genus') then
+                comp = trim(adjustl(species_pres%genusgroups(is)))
+    			call csv_write(funit, comp, .false.)
+            else
+                genname = trim(adjustl(species_pres%spec_names(is,1)))
+                comp = trim(adjustl(species_pres%spec_names(is, 2)))
+                call csv_write(funit, genname, .false.)
+    			call csv_write(funit, comp, .false.)
+            end if
 
-				call csv_write(dead_s, plot_mean_dbh(is), .false.)
-				call csv_write(dead_s, total_biomc(is), .false.)
-				call csv_write(dead_s, plot_std_biomc(is), .true.)
+            if (in_site(is)) then
+
+                ! Write out the data
+                do l = 1, M_TYPES
+                    call csv_write(funit, tot_d_markers(is, l), .false.)
+                end do
+				call csv_write(funit, mean_diam_mn(is), .false.)
+				call csv_write(funit, tot_biomC(is), .false.)
+				call csv_write(funit, tot_biomC_sd(is), .true.)
 			else
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .false.)
-				call csv_write(dead_s, rnvalid, .true.)
+				! Write -999.0s
+                do l = 1, 11
+                    call csv_write(funit, RNVALID, .false.)
+                end do
+                call csv_write(funit, RNVALID, .true.)
 			endif
-
 		enddo
 
 		!write plot-level data if turned on
 		if (plot_level_data) then
 
 			do ip = 1, site%numplots
-				do is = 1, species_pres%numspecies
-					call csv_write(dead_ps, iwmo, .false.)
-					call csv_write(dead_ps, site%runID, .false.)
-					call csv_write(dead_ps, year, .false.)
-					call csv_write(dead_ps, ip, .false.)
-					call csv_write(dead_ps,                                    &
-						trim(adjustl(species_pres%spec_names(is, 1))), .false.)
-					call csv_write(dead_ps,                                    &
-						trim(adjustl(species_pres%spec_names(is, 2))), .false.)
+				do is = 1, species_pres%numgenera
+
+                    ! We write lines out for every species/genus, but write
+                    ! -999.0s to ones not 'present'
+					call csv_write(funit_p, site%site_id, .false.)
+					call csv_write(funit_p, site%runID, .false.)
+					call csv_write(funit_p, year, .false.)
+					call csv_write(funit_p, ip, .false.)
+
+                    ! Get species/genus name
+                    if (field == 'genus') then
+                        comp = trim(adjustl(species_pres%genusgroups(is)))
+            			call csv_write(funit, comp, .false.)
+                    else
+                        genname = trim(adjustl(species_pres%spec_names(is,1)))
+                        comp = trim(adjustl(species_pres%spec_names(is, 2)))
+                        call csv_write(funit, genname, .false.)
+            			call csv_write(funit, comp, .false.)
+                    end if
 
 					if (in_site(is)) then
 
-						d_markers(ip, is, :) = d_markers(ip, is, :)*plotscale
+                        ! Convert some units
+						d_markers(ip,is,:) = d_markers(ip,is,:)*               &
+                            HEC_TO_M2/plotsize
 
-						call csv_write(dead_ps, d_markers(ip, is, 1), .false.)
-						call csv_write(dead_ps, d_markers(ip, is, 2), .false.)
-						call csv_write(dead_ps, d_markers(ip, is, 3), .false.)
-						call csv_write(dead_ps, d_markers(ip, is, 4), .false.)
-						call csv_write(dead_ps, d_markers(ip, is, 5), .false.)
-						call csv_write(dead_ps, d_markers(ip, is, 6), .false.)
-						call csv_write(dead_ps, d_markers(ip, is, 7), .false.)
-						call csv_write(dead_ps, d_markers(ip, is, 8), .false.)
+                        do l = 1, M_TYPES
+                            call csv_write(funit_p, d_markers(ip, is, l),      &
+                                .false.)
+                        end do
+						call csv_write(funit_p, mean_diam(ip, is), .false.)
+						call csv_write(funit_p, biomC(ip, is), .true.)
 
-						call csv_write(dead_ps, mean_dbh(ip, is), .false.)
-						call csv_write(dead_ps, plotlevel_biomc(ip, is), .true.)
 					else
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .false.)
-						call csv_write(dead_ps, rnvalid, .true.)
-
+                        ! Write -999.0s
+                        do l = 1, 10
+						    call csv_write(funit_p, RNVALID, .false.)
+                        end do
+                        call csv_write(funit_p, RNVALID, .true.)
 					endif
-
 				enddo
 			enddo
 		endif
 
-	end subroutine write_dead_species_data
+	end subroutine write_dead_genus_or_species_data
+
 
 	!:.........................................................................:
 
 	subroutine write_site_data(site, year)
-		!writes yearly climate data to Climate.csv
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs:
-		!	site: site instance
-		!	year: simulation year
+        !
+        !  Writes site/climate output
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/12     K. Holcomb          Original code
 
-		class(SiteData), intent(in) :: site
-		integer,         intent(in) :: year
-		integer                     :: iwmo
+        ! Data dictionary: calling arguments
+		class(SiteData), intent(in) :: site ! Site object
+		integer,         intent(in) :: year ! Simulation year
 
-		iwmo = site%site_id
-
-		call csv_write(clim_unit, iwmo, .false.)
+		call csv_write(clim_unit, site%site_id, .false.)
 		call csv_write(clim_unit, site%runID, .false.)
 		call csv_write(clim_unit, year, .false.)
 		call write_site_csv(site, clim_unit)
@@ -1620,64 +856,82 @@ contains
 	!:.........................................................................:
 
 	subroutine write_soiln_data(site, year)
-		!writes average yearly soil decomposition variables, averaged by
-		  !plot, to SoilDecomp.csv
-		!Author: Adrianna Foster 2018, v. 1.0
-		!Inputs:
-		!	site: site instance
-		!	year: simulation year
+        !
+        !  Writes soil decomposition variables, averaged by plot
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/26/18     A. C. Foster        Original code
 
-		class(SiteData), intent(in) :: site
-		integer,         intent(in) :: year
+        ! Data dictionary: calling arguments
+		class(SiteData), intent(in) :: site ! Site object
+		integer,         intent(in) :: year ! Simulation year
 
-		real, dimension(numplots)     :: O_depth, M_depth, moss_biom
-		real, dimension(numplots)     :: active, OM, OM_N, avail_n
-		real, dimension(numplots, 18) :: litter_in, forest_litter
-		real                          :: O_depth_mn, O_depth_sd
-		real                          :: M_depth_mn, M_depth_sd
-		real                          :: moss_biom_mn, moss_biom_sd
-		real                          :: active_mn, active_sd, OM_mn
-		real                          :: OM_sd, OM_N_mn, OM_N_sd
-		real                          :: avail_n_mn, avail_n_sd
-		real, dimension(18)           :: litter_in_mn, litter_in_sd
-		real, dimension(18)           :: forlitter_mn, forlitter_sd
-		integer                       :: ip, iwmo, il
+        ! Data dictionary: local variables
+        real, dimension(site%numplots, LIT_LEVS) :: fresh_litter  ! Fresh litter (t/ha)
+        real, dimension(site%numplots, LIT_LEVS) :: forest_litter ! Total litter (t/ha)
+		real, dimension(site%numplots)           :: O_depth       ! Organic layer depth (cm)
+        real, dimension(site%numplots)           :: M_depth       ! Moss layer depth (cm)
+        real, dimension(site%numplots)           :: moss_biom     ! Moss biomass (kg/ha)
+		real, dimension(site%numplots)           :: active        ! Active layer thickness (cm)
+        real, dimension(site%numplots)           :: OM            ! Humus content (t/ha)
+        real, dimension(site%numplots)           :: OM_N          ! Humus N content (tN/ha)
+        real, dimension(site%numplots)           :: avail_n       ! Plant-available N (kgN/ha)
+        real, dimension(LIT_LEVS)                :: fresh_lit_mn  ! Average fresh litter (t/ha)
+        real, dimension(LIT_LEVS)                :: fresh_lit_sd  ! SD of fresh litter (t/ha)
+        real, dimension(LIT_LEVS)                :: forlitter_mn  ! Average litter (t/ha)
+        real, dimension(LIT_LEVS)                :: forlitter_sd  ! SD of litter (t/ha)
+		real                                     :: O_depth_mn    ! Average organic layer depth (cm)
+        real                                     :: O_depth_sd    ! SD of organic layer depth (cm)
+		real                                     :: M_depth_mn    ! Average moss depth (cm)
+        real                                     :: M_depth_sd    ! SD of moss depth (cm)
+		real                                     :: moss_biom_mn  ! Average moss biomass (kg)
+        real                                     :: moss_biom_sd  ! SD of moss biomass (kg)
+		real                                     :: active_mn     ! Average active layer depth (cm)
+        real                                     :: active_sd     ! SD of active layer depth (cm)
+        real                                     :: OM_mn         ! Average humus content (t/ha)
+		real                                     :: OM_sd         ! SD of humus content (t/ha)
+        real                                     :: OM_N_mn       ! Average humus N content (tN/ha)
+        real                                     :: OM_N_sd       ! SD of humus N content (tN/ha)
+		real                                     :: avail_n_mn    ! Average plant-available N (kgN/ha)
+        real                                     :: avail_n_sd    ! SD of plant-available N (kgN/ha)
+		integer                                  :: ip, il        ! Looping indices
 
-		do ip = 1, numplots
-			O_depth(ip) = site%plots(ip)%soil%O_depth
-			M_depth(ip) = site%plots(ip)%soil%M_depth
-			!convert from kg/plot to t/ha
-			moss_biom(ip) = site%plots(ip)%soil%moss_biom/1000/plotsize*10000
-			active(ip) = site%plots(ip)%soil%active
+        ! Pull in data from plots
+		do ip = 1, site%numplots
+
+			O_depth(ip) = site%plots(ip)%soil%O_depth*M_TO_CM
+			M_depth(ip) = site%plots(ip)%soil%M_depth*M_TO_CM
+			moss_biom(ip) = site%plots(ip)%soil%moss_biom/plotsize/M2_TO_HEC
+			active(ip) = site%plots(ip)%soil%active*M_TO_CM
 			OM(ip) = site%plots(ip)%soil%cohorts(1, 1)
 			OM_N(ip) = site%plots(ip)%soil%cohorts(1, 2)
-			avail_n(ip) = site%plots(ip)%soil%avail_N
+			avail_n(ip) = site%plots(ip)%soil%avail_N*T_TO_KG
 
-			do il = 1, 18
-				litter_in(ip, il) = site%plots(ip)%soil%litter(il)
+			do il = 1, LIT_LEVS
+				fresh_litter(ip, il) = site%plots(ip)%soil%litter(il)
 				forest_litter(ip, il) =                                        &
-					site%plots(ip)%soil%forest_litter(il, 2)
+					site%plots(ip)%soil%forest_litter(il, 1)
 			end do
 
 		end do
 
-		call stddev(O_depth, O_depth_mn, O_depth_sd, rnvalid)
-		call stddev(M_depth, M_depth_mn, M_depth_sd, rnvalid)
-		call stddev(moss_biom, moss_biom_mn, moss_biom_sd, rnvalid)
-		call stddev(active, active_mn, active_sd, rnvalid)
-		call stddev(OM, OM_mn, OM_sd, rnvalid)
-		call stddev(OM_N, OM_N_mn, OM_N_sd, rnvalid)
-		call stddev(avail_n, avail_n_mn, avail_n_sd, rnvalid)
-
-		do il = 1, 18
-
-			call stddev(litter_in(:,il), litter_in_mn(il), litter_in_sd(il))
+        ! Get means and standard deviations
+		call stddev(O_depth, O_depth_mn, O_depth_sd, RNVALID)
+		call stddev(M_depth, M_depth_mn, M_depth_sd, RNVALID)
+		call stddev(moss_biom, moss_biom_mn, moss_biom_sd, RNVALID)
+		call stddev(active, active_mn, active_sd, RNVALID)
+		call stddev(OM, OM_mn, OM_sd, RNVALID)
+		call stddev(OM_N, OM_N_mn, OM_N_sd, RNVALID)
+		call stddev(avail_n, avail_n_mn, avail_n_sd, RNVALID)
+		do il = 1, LIT_LEVS
+			call stddev(fresh_litter(:,il), fresh_lit_sd(il), fresh_lit_mn(il))
 			call stddev(forest_litter(:,il), forlitter_mn(il), forlitter_sd(il))
 		end do
 
-		iwmo = site%site_id
-
-		call csv_write(soildecomp, iwmo, .false.)
+        ! Write to file
+		call csv_write(soildecomp, site%site_id, .false.)
 		call csv_write(soildecomp, site%runID, .false.)
 		call csv_write(soildecomp, year, .false.)
 		call csv_write(soildecomp, O_depth_mn, .false.)
@@ -1687,11 +941,12 @@ contains
 		call csv_write(soildecomp, active_mn, .false.)
 		call csv_write(soildecomp, OM_mn, .false.)
 		call csv_write(soildecomp, OM_N_mn, .false.)
-
-		do il = 1, 18
+		do il = 1, LIT_LEVS
 			call csv_write(soildecomp, forlitter_mn(il), .false.)
 		end do
-
+        do il = 1, LIT_LEVS
+            call csv_write(soildecomp, fresh_lit_mn(il), .false.)
+        end do
 		call csv_write(soildecomp, avail_n_mn, .true.)
 
 	end subroutine write_soiln_data
@@ -1699,27 +954,29 @@ contains
 	!:.........................................................................:
 
 	subroutine write_tree_data(site, year)
-		!writes tree-level data to TreeData.csv
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs:
-		!	site: site instance
-		!	year: simulation year
+        !
+        !  Writes tree level data
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/12     K. Holcomb          Original code
 
-		class(SiteData), intent(in) :: site
-		integer,         intent(in) :: year
-		integer                     :: iwmo
-		integer                     :: ip, it
+        ! Data dictionary: calling arguments
+		class(SiteData), intent(in) :: site ! Site object
+		integer,         intent(in) :: year ! Simulation year
 
-		iwmo = site%site_id
+        ! Data dictionary: local variables
+		integer :: ip, it ! Looping indices
+
 
 		do ip = 1, site%numplots
 			do it = 1, site%plots(ip)%numtrees
-				call csv_write(tld, iwmo, .false.)
-				call csv_write(tld, site%runID, .false.)
-				call csv_write(tld, year,.false.)
-				call csv_write(tld, ip, .false.)
-				call csv_write(tld, it, .false.)
-				call write_tree_csv(site%plots(ip)%trees(it), tld)
+				call csv_write(pl_tree, site%site_id, .false.)
+				call csv_write(pl_tree, site%runID, .false.)
+				call csv_write(pl_tree, year, .false.)
+				call csv_write(pl_tree, ip, .false.)
+				call write_tree_csv(site%plots(ip)%trees(it), pl_tree)
 			enddo
 		enddo
 

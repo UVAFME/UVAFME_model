@@ -1,170 +1,140 @@
 module Species
-  use Constants
-
-  implicit none
 
 !*******************************************************************************
   !
-  !The Species module contains the definition of the SpeciesData type,
-  !which holds attributes pertinent to all members of a species, and
-  !associated procedures.
+  ! The Species module contains the definition of the SpeciesData type,
+  ! which holds attributes pertinent to all members of a species, and
+  ! associated procedures.
   !
-  !
-  !Methods:
-  !  initialize_species
-  !  copy_species: overloads assignments
-  !  light_rsp(self, al)
-  !  temp_rsp(self, x)
-  ! 	verified against original 07/27/2012
-  !  drought_rsp(self, x)
-  !     verified against original 07/27/2012
-  !  poor_soil_rsp(self, x)
-  !     verified against original 07/27/2012
-  !  fire_rsp(self, x)
-  !  flood_rsp(self, x)
   !
 !*******************************************************************************
 
-  type SpeciesData
-     character(len = MAX_NLEN)  :: genus_name
-     character(len = MAX_NLEN)  :: taxonomic_name
-     character(len = 8)         :: unique_id
-     character(len = MAX_NLEN)  :: common_name
-     integer                    :: genus_id, species_id
-     integer                    :: shade_tol, lownutr_tol, stress_tol
-     integer                    :: age_tol, drought_tol, flood_tol
-     integer                    :: perm_tol
-     integer                    :: fire_tol, fire_regen
-     integer                    :: litter_class, seed_moist
-     integer                    :: org_tol, recr_age
-     real                       :: max_age, max_diam, max_ht
-     real                       :: wood_bulk_dens
-     real                       :: rootdepth
-     real                       :: leafdiam_a, leafarea_c
-     real                       :: deg_day_min, deg_day_opt, deg_day_max
-     real                       :: seed_surv, seedling_lg
-     real                       :: invader, bark_thick
-     real                       :: seed_num, sprout_num
-     real                       :: arfa_0, g
-     real                       :: fc_fire, fc_wind
-     real                       :: fc_degday, fc_drought, fc_flood
-     logical                    :: conifer, fire_kill
-     logical                    :: layering
-  end type SpeciesData
+    use Constants
+    implicit none
 
-  interface assignment(=)
-     module procedure copy_species
-  end interface
+    ! Define SpeciesData type
+    type SpeciesData
+        character(len = MAX_NLEN)  :: genus_name     ! Genus name
+        character(len = MAX_NLEN)  :: taxonomic_name ! Taxonomic name
+        character(len = 8)         :: unique_id      ! 8-character unique species id
+        character(len = MAX_NLEN)  :: common_name    ! Common name
+        integer                    :: shade_tol      ! Relative shade tolerance (1-5; 5 = least tolerant)
+        integer                    :: lownutr_tol    ! Relative low nutrient tolerance (1-3; 3 = least tolerant)
+        integer                    :: stress_tol     ! Relative stress tolerance (1-5; 5 = least tolerant)
+        integer                    :: age_tol        ! Probability of surviving to max age (1-3; 3 = least likely)
+        integer                    :: drought_tol    ! Relative drought tolerance (1-6; 6 = least tolerant)
+        integer                    :: flood_tol      ! Relative flood tolernace (1-7; 7 = least tolerant)
+        integer                    :: perm_tol       ! Relative permafrost tolerane (1-2; 2 = least tolerant)
+        integer                    :: fire_regen     ! Relative ability to reproduce following fire
+                                                     ! (1-2: fire beneficial; 3: 4-6 fire detrimental)
+        integer                    :: litter_class   ! Litter class
+        integer                    :: org_tol        ! Relative ability to germinate on deep soil (1-3; 3 = least able)
+        integer                    :: recr_age       ! Minimum age for reproduction (years)
+        real                       :: max_age        ! Average maximum age (years)
+        real                       :: max_diam       ! Average maximum diameter (cm)
+        real                       :: max_ht         ! Average maximum height (m)
+        real                       :: wood_bulk_dens ! Wood bulk density (t/m3)
+        real                       :: rootdepth      ! Average rooting depth (m)
+        real                       :: leafdiam_a     ! Scalar for leaf area-diameter relationship
+        real                       :: leafarea_c     ! Scalar for leaf area:biomass relationship
+        real                       :: deg_day_min    ! Minimum growing degree-days (>5degC)
+        real                       :: deg_day_opt    ! Optimum growing degree-days (>5degC)
+        real                       :: deg_day_max    ! Maximum growing degree-days (>5degC)
+        real                       :: seed_surv      ! Proportion of seebank lost annually (0-1)
+        real                       :: seedling_surv  ! Proportion of seedling bank lost annually (0-1)
+        real                       :: invader        ! Seed rain from outside the plot (seeds/m2)
+        real                       :: bark_thick     ! Bark thickness (cm bark/cm DBH)
+        real                       :: seed_num       ! Seed rain from within the plot (seeds/m2)
+        real                       :: sprout_num     ! Regeneration from sprouting (sprouts/m2)
+        real                       :: s, g, beta     ! Growth parameters
+        real                       :: dbh_min        ! Minimum diameter increment before "stressed" (cm)
+        logical                    :: conifer        ! Is species a conifer?
+        logical                    :: layering       ! Can species reproduce by layering?
+    end type SpeciesData
 
-  private copy_species
+    interface assignment(=)
+        module procedure copy_species
+    end interface
+
+    private copy_species
 
 contains
 
-!-------------------------------------------------------------------------------
-! Methods
-!-------------------------------------------------------------------------------
-
 	!:.........................................................................:
 
-	subroutine initialize_species(self, species_id, genus_name,                &
-								taxonomic_name, unique_id, common_name,        &
-								genus_id, shade_tol, lownutr_tol, stress_tol,  &
-								age_tol, drought_tol, flood_tol, perm_tol,     &
-								org_tol, bark_thick, fire_regen, max_age,      &
-								max_diam, max_ht, wood_bulk_dens, rootdepth,   &
-								leafdiam_a, leafarea_c, deg_day_min,           &
-								deg_day_opt, deg_day_max, seedling_lg,         &
-								invader, seed_num, sprout_num, layering,       &
-								seed_surv, arfa_0, g, conifer, litter_class,   &
-								recr_age)
-		!initializes species instances
-		!Author: Katherine Holcomb, 2012 v. 1.0
-		!Inputs/Outputs:
-		!   self:           species data type
-		!Inputs:
-		!   genus_name:     genus of species
-		!   taxonomic_name: latin name of species
-		!   unique_id:      8 character ID built from genus and species names
-		!   common_name:    english commmon name of species
-		!   genus_id:       genus ID number
-		!	species_id:     species ID number (within genus)
-		!   shade_tol:      relative shade tolerance (1-5; 5 = least tolerant)
-		!   lownutr_tol:    relative nutrient tolerance (1-3; 3 = least tolerant)
-		!   stress_tol:     relative stress tolerance (1-3; 3 = least tolerant)
-		!   age_tol:        probability of reaching max_age (1-3; 3 = least likely)
-		!   fire_regen:     relative ability to regenerate after fire (1-6;
-		!						1 = benefit from fire; 3 = no effect;
-		!						6 = fire detrimental to regeneration
-		!   drought_tol:    relative drought tolerance (1-6; 6 = least tolerant)
-		!   flood_tol:      relative flood tolerance (1-5; 5 = least tolerant)
-		!	perm_tol:       permafrost tolerance (1 = tolerant; 2 = intolerant)
-		!   org_tol:        ability to regenerate on organic layer (1-3;
-		!						3 = least tolerant)
-		!	litter_class:   litter class of species
-		!	max_age:        average maximum age (years)
-		! 	max_diam:       average maximum DBH (cm)
-		!	max_ht:         average maximum height (m)
-		!	rootdepth:      rootdepth of species (m)
-		!	wood_bulk_dens: bulk density of wood (tonnes/m3)
-		!	leafdiam_a:     scalar parameter for leaf LA-Dcbb relationship
-		!   leafarea_c:     leaf area ratio
-		!   deg_day_min:    minimum growing degree-days
-		!   deg_day_opt:    optimum growing degree-days
-		!	deg_day_max:    maximum growing degree-days
-		! 	seed_surv:      proportion seedbank lost annually (0 to 1)
-		!   seedling_lg:    proportion seedling bank lost annually (0 to 1)
-		!   invader:        seed rain from outside plot (seeds/m2)
-		!	seed_num:       seed rain within plot (seeds/m2)
-		!   sprout_num:     average sprouts per individual
-		!   arfa_0:         growth parameter (i.e. s) (m/cm)
-		!   g:              growth parameter
-		!   conifer:        evergreen (1) or deciduous (0)
-		!   layering:       ability of species to reproduce by layer (0 or 1)
+	subroutine initialize_species(self, genus_name, taxonomic_name, unique_id, &
+        common_name, shade_tol, lownutr_tol, stress_tol, age_tol,              &
+        drought_tol, flood_tol, perm_tol, org_tol, bark_thick,                 &
+        fire_regen, max_age, max_diam, max_ht, wood_bulk_dens, rootdepth,      &
+        leafdiam_a, leafarea_c, deg_day_min, deg_day_opt, deg_day_max,         &
+        seedling_surv, invader, seed_num, sprout_num, layering, seed_surv, s,  &
+        g, beta, conifer, litter_class, recr_age, dbh_min)
+        !
+        !  Initializes a species object using input parameters and initial
+        !  conditions.
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    07/27/12     K. Holcomb           Original Code
+        !
 
-		class(SpeciesData),   	   intent(inout)  :: self
-		character(len = MAX_NLEN), intent(in)     :: genus_name
-		character(len = MAX_NLEN), intent(in)     :: taxonomic_name
-		character(len = 8),        intent(in)     :: unique_id
-		character(len = MAX_NLEN), intent(in)     :: common_name
-		integer,                   intent(in)     :: genus_id
-		integer,                   intent(in)     :: species_id
-		integer,                   intent(in)     :: shade_tol
-		integer,                   intent(in)     :: lownutr_tol
-		integer,                   intent(in)     :: stress_tol
-		integer,                   intent(in)     :: age_tol, fire_regen
-		integer,                   intent(in)     :: drought_tol
-		integer,                   intent(in)     :: flood_tol
-		integer,                   intent(in)     :: perm_tol
-		integer,                   intent(in)     :: org_tol, recr_age
-		integer,                   intent(in)     :: litter_class
-		real,                      intent(in)     :: max_age, max_diam
-		real,                      intent(in)     :: max_ht, rootdepth
-		real,                      intent(in)     :: wood_bulk_dens
-		real,                      intent(in)     :: leafdiam_a
-		real,                      intent(in)     :: leafarea_c
-		real,                      intent(in)     :: deg_day_min
-		real,                      intent(in)     :: deg_day_opt
-		real,                      intent(in)     :: deg_day_max
-		real,                      intent(in)     :: seed_surv
-		real,                      intent(in)     :: seedling_lg
-		real,                      intent(in)     :: invader, bark_thick
-		real,                      intent(in)     :: seed_num
-		real,                      intent(in)     :: sprout_num
-		real,                      intent(in)     :: arfa_0, g
-		logical,                   intent(in)     :: conifer, layering
+        ! Data dictionary: constants
+        ! Scalar for modifying g by shade tolerance
+        real, dimension(5), parameter :: SS = [1.1, 1.15, 1.2, 1.23, 1.25]
+        ! Scalar for modifying leafarea_c by shade tolerance
+        real, dimension(5), parameter :: ADJUST = [1.5, 1.55, 1.6, 1.65, 1.7]
 
-		real, dimension(5)                        :: ss, adjust
-		data ss/1.1, 1.15, 1.2, 1.23, 1.25/
-		data adjust/1.5, 1.55, 1.6, 1.65, 1.7/
+        ! Data dictionary: calling argumnets
+		class(SpeciesData),   	   intent(inout)  :: self           ! Species object
+		character(len = MAX_NLEN), intent(in)     :: genus_name     ! Genus name
+		character(len = MAX_NLEN), intent(in)     :: taxonomic_name ! Taxonomic name
+		character(len = 8),        intent(in)     :: unique_id      ! 8-character unique species id
+		character(len = MAX_NLEN), intent(in)     :: common_name    ! Common name
+		integer,                   intent(in)     :: shade_tol      ! Relative shade tolerance (1-5; 5 = least tolerant)
+		integer,                   intent(in)     :: lownutr_tol    ! Relative low nutrient tolerance (0-3; 3 = least tolerant)
+		integer,                   intent(in)     :: stress_tol     ! Relative stress tolerance (1-5; 5 = least tolerant)
+		integer,                   intent(in)     :: age_tol        ! Probability of surviving to max age (1-3; 3 = least likely)
+        integer,                   intent(in)     :: fire_regen     ! Relative ability to reproduce following fire
+                                                                    ! (1-2: fire beneficial; 3: 4-6 fire detrimental)
+		integer,                   intent(in)     :: drought_tol    ! Relative drought tolerance (1-6; 6 = least tolerant)
+		integer,                   intent(in)     :: flood_tol      ! Relative flood tolernace (1-7; 7 = least tolerant)
+		integer,                   intent(in)     :: perm_tol       ! Relative permafrost tolerane (1-2; 2 = least tolerant)
+		integer,                   intent(in)     :: org_tol        ! Relative ability to germinate on deep soil (1-3; 3 = least able)
+        integer,                   intent(in)     :: recr_age       ! Minimum age for reproduction (years)
+		integer,                   intent(in)     :: litter_class   ! Litter class
+		real,                      intent(in)     :: max_age        ! Average maximum age (years)
+        real,                      intent(in)     :: max_diam       ! Average maximum diameter (cm)
+		real,                      intent(in)     :: max_ht         ! Average maximum height (m)
+        real,                      intent(in)     :: rootdepth      ! Average rooting depth (m)
+		real,                      intent(in)     :: wood_bulk_dens ! Wood bulk density (t/m3)
+		real,                      intent(in)     :: leafdiam_a     ! Scalar for leaf area-diameter relationship
+		real,                      intent(in)     :: leafarea_c     ! Scalar for leaf area:biomass relationship
+		real,                      intent(in)     :: deg_day_min    ! Minimum growing degree-days (>5degC)
+		real,                      intent(in)     :: deg_day_opt    ! Optimum growing degree-days (>5degC)
+		real,                      intent(in)     :: deg_day_max    ! Maximum growing degree-days (>5degC)
+		real,                      intent(in)     :: seed_surv      ! Proportion of seebank lost annually (0-1)
+		real,                      intent(in)     :: seedling_surv  ! Proportion of seedling bank lost annually (0-1)
+		real,                      intent(in)     :: invader        ! Seed rain from outside the plot (seeds/m2)
+        real,                      intent(in)     :: bark_thick     ! Bark thickness (cm bark/cm DBH)
+		real,                      intent(in)     :: seed_num       ! Seed rain from within the plot (seeds/m2)
+		real,                      intent(in)     :: sprout_num     ! Regeneration from sprouting (sprouts/m2)
+		real,                      intent(in)     :: s, g, beta     ! Growth parameters
+        real,                      intent(in)     :: dbh_min        ! Minimum diameter increment before "stressed" (cm)
+		logical,                   intent(in)     :: conifer        ! Can species reproduce by layering?
+        logical,                   intent(in)     :: layering       ! Can species reproduce by layering?
 
-        self%species_id     = species_id
+
+
+
+        ! Set instance variables from input file
         self%genus_name     = genus_name
         self%taxonomic_name = taxonomic_name
         self%common_name    = common_name
         self%unique_id      = unique_id
-        self%genus_id       = genus_id
         self%max_age        = max_age
         self%max_diam       = max_diam
+        self%max_ht         = max_ht
         self%rootdepth      = rootdepth
         self%wood_bulk_dens = wood_bulk_dens
         self%deg_day_min    = deg_day_min
@@ -186,46 +156,43 @@ contains
         self%seed_num       = seed_num
         self%sprout_num     = sprout_num
         self%seed_surv      = seed_surv
-        self%seedling_lg    = seedling_lg
-        self%arfa_0         = arfa_0
+        self%seedling_surv  = seedling_surv
+        self%s              = s
+        self%beta           = beta
         self%litter_class   = litter_class
         self%recr_age       = recr_age
+        self%dbh_min        = dbh_min
 
-		!adjustments
-        self%leafarea_c = leafarea_c/hec_to_m2
-        self%max_ht = min(max_ht, rootdepth*80.0/(1 + rootdepth))
-        self%leafdiam_a = leafdiam_a*adjust(shade_tol)
-        self%g = g*ss(shade_tol)
+		! Convert to tC/ha
+        self%leafarea_c = leafarea_c/HEC_TO_M2
 
-		!initialized to constants
-        self%fc_fire = 0.0
-        self%fc_wind = 0.0
-        self%fc_degday = 0.0
-        self%fc_drought = 0.0
-        self%fc_flood = 0.0
-        self%fire_kill = .false.
+        ! Adjust for shade tolerance
+        self%leafdiam_a = leafdiam_a*ADJUST(shade_tol)
+        self%g = g*SS(shade_tol)
 
 	end subroutine initialize_species
 
 	!:.........................................................................:
 
 	subroutine copy_species(self, species_data)
-		!copies species list from old list to new
-		!Author: Katherine Holcomb, 2012 v. 1.0
-		!Inputs/Outputs:
-		!   self:           species data type instance (new)
-		!Inputs:
-		!	species_data:   species data type instance (old)
+        !
+        !  Copies a instance variables from one object to another
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    07/27/12     K. Holcomb           Original Code
+        !
 
-		class(SpeciesData),  intent(out)  :: self
-		class(SpeciesData),  intent(in)   :: species_data
+        ! Data dictionary: calling arguments
+		class(SpeciesData),  intent(out)  :: self         ! New species object
+		class(SpeciesData),  intent(in)   :: species_data ! Old species object
 
-        self%species_id     = species_data%species_id
+        ! Copy attributes
         self%genus_name     = species_data%genus_name
         self%taxonomic_name = species_data%taxonomic_name
         self%common_name    = species_data%common_name
         self%unique_id      = species_data%unique_id
-        self%genus_id       = species_data%genus_id
         self%max_ht         = species_data%max_ht
         self%max_age        = species_data%max_age
         self%max_diam       = species_data%max_diam
@@ -246,305 +213,336 @@ contains
         self%org_tol        = species_data%org_tol
         self%stress_tol     = species_data%stress_tol
         self%age_tol        = species_data%age_tol
-        self%fc_degday      = species_data%fc_degday
-        self%fc_fire        = species_data%fc_fire
-        self%fc_drought     = species_data%fc_drought
-        self%fc_flood       = species_data%fc_flood
-        self%fc_wind        = species_data%fc_wind
         self%conifer        = species_data%conifer
         self%layering       = species_data%layering
         self%litter_class   = species_data%litter_class
-        self%fire_kill      = species_data%fire_kill
         self%invader        = species_data%invader
         self%seed_num       = species_data%seed_num
         self%sprout_num     = species_data%sprout_num
         self%seed_surv      = species_data%seed_surv
-        self%seedling_lg    = species_data%seedling_lg
-        self%arfa_0         = species_data%arfa_0
+        self%seedling_surv  = species_data%seedling_surv
+        self%s              = species_data%s
         self%g              = species_data%g
+        self%beta           = species_data%beta
         self%recr_age       = species_data%recr_age
+        self%dbh_min        = species_data%dbh_min
 
 	end subroutine copy_species
 
 	!:.........................................................................:
 
+	real function light_rsp(self, al)
+        !
+        !  Computes growth response to available light
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !
 
-	function light_rsp(self, al)
-		!computes growth response to available light
-		!Inputs:
-		!	self:      species data type instance
-		!	al:        available light (0-1)
-		!Outputs:
-		!	light_rsp: growth response to available light (0-1)
+        ! Data dictionary: constants
+        ! Light response parameters - based on shade tolerance
+        real, dimension(5), parameter :: LIGHT_C1 = [1.0, 1.31, 1.62, 1.93,    &
+            2.24]
+        real, dimension(5), parameter :: LIGHT_C2 = [4.64, 3.76, 2.888, 2.012, &
+            1.136]
+        real, dimension(5), parameter :: LIGHT_C3 = [0.05, 0.0575, 0.065,      &
+            0.0725, 0.08]
 
-		real                            :: light_rsp
-		class(SpeciesData), intent(in)  :: self
-		real,               intent(in)  :: al
+        ! Data dictionary: calling arguments
+		class(SpeciesData), intent(in) :: self ! Species object
+		real,               intent(in) :: al   ! Available light (0-1)
 
-		real                            :: flight
-		integer                         :: kt
+        ! Data dictionary: local variables
+		real    :: flight ! Growth response to available light (0-1)
+		integer :: kt     ! Relative shade tolerance (1-5; 5 = least tolerant)
 
-		real, dimension(5)              :: light_c1, light_c2, light_c3
-
-		data light_c1 /1.01, 1.02, 1.11, 1.24, 1.49/
-		data light_c2 /4.62, 4, 2.52, 1.78, 1.23/
-		data light_c3 /0.05, 0.055, 0.07, 0.08, 0.09/
-
+        ! Get shade tolerance
 		kt = self%shade_tol
 
-		flight = light_c1(kt)*(1.0 - exp(-light_c2(kt)*(al - light_c3(kt))))
-
+        ! Calculate growth response
+		flight = LIGHT_C1(kt)*(1.0 - exp(-LIGHT_C2(kt)*(al - LIGHT_C3(kt))))
 		if (flight .lt. 0.0) flight = 0.0
 		if (flight .gt. 1.0) flight = 1.0
+
 		light_rsp = flight
 
 	end function light_rsp
 
 	!:.........................................................................:
 
+	real function poor_soil_rsp(n_avail, n_tol)
+        !
+        !  Computes quadratic poor nutrient response growth factors by poor
+        !  nutrient response class and relative N availability (available N
+        !  relative to N demand by all plants)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !
 
-	function poor_soil_rsp(n_av, n_tol)
-		!computes quadratic poor nutrient response growth factors by poor
-		  !nutrient response class (1 = intol, 3 = tol) and soil fertility
-		!Inputs:
-		!	n_req:         relative N availability (0-1)
-		!	n_tol:         species' nutrient tolerance (1-3; 3 = least tolerant)
-		!	species:       species instance
-		!Outputs:
-		!	poor_soil_rsp: growth response to nutrients (0-1)
+        ! Data dictionary: constants
+        ! Nutrient response parameters - based on nutrient tolerance
+        real, dimension(3), parameter :: FERT_C1 = [-0.6274, -0.2352, 0.2133]
+        real, dimension(3), parameter :: FERT_C2 = [3.600, 2.771, 1.789]
+        real, dimension(3), parameter :: FERT_C3 = [-1.994, -1.550, -1.014]
 
-		real                               :: poor_soil_rsp
-		real,               intent(in)     :: n_av
-		integer,            intent(in)     :: n_tol
+        ! Data dictionary: calling arguments
+		real,    intent(in) :: n_avail ! Relative N availability (0-1)
+		integer, intent(in) :: n_tol   ! Relative low nutrient tolerance (0-3; 3 = least tolerant)
 
-	    integer                            :: k
-	    real                               :: Nav
-		real                               :: fpoor
-		real, dimension(3)                 :: fert_c1, fert_c2, fert_c3
-		data  fert_c1 /-0.6274, -0.2352, 0.2133/
-		data  fert_c2 /3.600, 2.771, 1.789/
-		data  fert_c3 /-1.994, -1.550, -1.014/
+        ! Data dictionary: local variables
+	    integer :: k      ! Relative low nutrient tolerance (0-3; 3 = most tolerant)
+	    real    :: navail ! Relative N availability
+		real    :: fpoor  ! Growth response to low nutrients (0-1)
 
-		!here the arrays are backwards so 1 is intolerant and 3 is tolerant
-		  !(in input csv 3 is intolerant, 1 is tolerant), so must switch
-		k = 4 - n_tol
 
-		!N req is max of 1.0
-		Nav = min(n_av, 1.0)
+		if (n_tol .eq. 0) then
 
-		fpoor = fert_c1(k) + fert_c2(k)*Nav + fert_c3(k)*Nav**2
-		if (fpoor.le. 0.0) fpoor = 0.0
-		if (fpoor.ge. 1.0) fpoor = 1.0
+            ! Can fix nitrogen - so no effect
+            poor_soil_rsp = 1.0
 
-		poor_soil_rsp = fpoor*Nav
+        else
+
+            ! Here the arrays are backwards so 1 is intolerant and 3 is tolerant
+    		! (in input csv 3 is intolerant, 1 is tolerant), so must switch
+            k = 4 - n_tol
+
+    		! Max of 1.0
+    		navail = min(n_avail, 1.0)
+
+            ! Calculate impact of low nutrients
+    		fpoor = FERT_C1(k) + FERT_C2(k)*navail + FERT_C3(k)*navail**2
+    		if (fpoor.le. 0.0) fpoor = 0.0
+    		if (fpoor.ge. 1.0) fpoor = 1.0
+
+    		poor_soil_rsp = fpoor*navail
+
+        end if
 
 	end function poor_soil_rsp
 
 	!:.........................................................................:
 
-	subroutine fire_rsp(self, fire)
-		!calculates species-level effect of fire on regeneration
-		!Inputs/Outputs:
-		!	self:     species instance
-		!Inputs:
-		!	fire:     did a fire occur? (0 or 1)
-		!Outputs:
-		!	fire_rsp: regeneration response to fire (0.001 - 1000)
+	subroutine fire_rsp(self, fire, fc_fire)
+        !
+        !  Calculates species-level effect of fire on regeneration
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    01/27/21     A. C. Foster        Updated to have output be a plot
+        !                                       attribute
+        !
 
-		class(SpeciesData), intent(inout)  :: self
-		integer,            intent(in)     :: fire
+        ! Data dictionary: constants:
+        ! Regeneration response parameters - based on fire regeneration tolerance
+        real, dimension(6), parameter :: GAMA = [100.0, 10.0, 1.00, 0.1,       &
+            0.01, 0.001]
 
-		real                               :: resp
-		integer                            :: k
-		real, dimension(6)                 :: gama
-		data gama/100.0, 10.0, 1.00, 0.1, 0.01, 0.001/
+        ! Data dictionary: calling arguments
+		class(SpeciesData), intent(in)  :: self    ! Species object
+		integer,            intent(in)  :: fire    ! Did a fire occur (1: yes; 0: no)
+        real,               intent(out) :: fc_fire ! Regeneration response to fire
 
+        ! Data dictionary: local variables
+		real    :: resp ! Regeneration response to fire
+		integer :: k    ! Relative ability to reproduce following fire
+                        ! (1-2: fire beneficial; 3: 4-6 fire detrimental)
+
+        ! Get fire regeneration tolerance
 		k = self%fire_regen
 
 		if (fire == 1) then
-			resp = gama(k)
+            ! Fire occurred - calculate response
+			resp = GAMA(k)
 		else
+            ! No fire occurred
 			resp = 1.0
 		end if
 
-		self%fc_fire = resp
+		fc_fire = resp
 
 	end subroutine fire_rsp
 
 	!:.........................................................................:
 
-	subroutine temp_rsp(self, x)
-		!calculates species-level effect of GDD on growth
-		!Author: Yan Xiaodong 2005 v. 1.0 - parabolic growth response
-		!Changelog: Adrianna Foster & Jacquelyn Shuman 2014 v. 2.0 - updated to
-		  !asymptotic growth response
-		!Inputs/Outputs:
-		!	self:     species instance
-		!Inputs:
-		!	x:        growing degree-days
-		!Outputs:
-		!	temp_rsp: growth response to temperature (0-1)
+	subroutine temp_rsp(self, x, fc_gdd)
+        !
+        !  Calculates species-level effect of growing degree-days on growth
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    10/10/14     A. C. Foster        Asymptotic growth response
+        !    01/27/21     A. C. Foster        Updated to have output be a plot
+        !                 J. K. Shuman           attribute
+        !
 
-		class(SpeciesData), intent(inout)  :: self
-		real,               intent(in)     :: x
+        ! Data dictionary: calling arguments
+		class(SpeciesData), intent(in)  :: self   ! Species object
+		real,               intent(in)  :: x      ! Growing degree-days (>5degC)
+        real,               intent(out) :: fc_gdd ! Growth response to growing degree-days (0-1)
 
-		real                               :: ftemp
-		real                               :: ddmin, ddopt, ddmax
-		real                               :: a, b, tmp
+        ! Data dictionary: local variables
+		real :: ftemp ! Growth response to growing degree-days (0-1)
+		real :: ddmin ! Minimum growing degree-days (>5degC)
+        real :: ddopt ! Optimum growing degree-days (>5degC)
+        real :: ddmax ! Maximum growing degree-days (>5degC)
+		real :: a, b  ! Exponents for growing degree-day effect
+        real :: tmp   ! Temporary variable
 
-		ddmin = self%deg_day_min; ddmax = self%deg_day_max
+        ! Reducing OOP lookups
+		ddmin = self%deg_day_min
+        ddmax = self%deg_day_max
 		ddopt = self%deg_day_opt
 
+        ! Calculate exponents
 		a = (ddopt - ddmin)/(ddmax - ddmin)
 		b = (ddmax - ddopt)/(ddmax - ddmin)
 
-		!asymptotic GDD
+		! Asymptotic GDD
 		if (x .le. ddmin) then
+            ! Below minimum - can't grow
 			ftemp = 0.0
 		elseif (x .ge. ddopt) then
+            ! Above optimum - no effect
 			ftemp = 1.0
 		else
+            ! Calculate effect
 			tmp = ((x - ddmin)/(ddopt - ddmin))**a
 			ftemp = tmp*((ddmax - x)/(ddmax - ddopt))**b
 		end if
 
-		self%fc_degday = ftemp
+		fc_gdd = ftemp
 
 	end subroutine temp_rsp
 
 	!:.........................................................................:
 
-	subroutine drought_rsp(self, drydays, drydays_base)
-		!calculates species-level growth response to low soil moisture
-		!Inputs/Outputs:
-		!	self:         species instance
-		!Inputs:
-		!	drydays:      drought index (upper) (0-1)
-		!	drydays_base: drought index (lower) (0-1)
+	subroutine drought_rsp(self, drydays, fc_drought)
+        !
+        !  Calculates species-level effect low soil moisture on growth
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !    07/27/12     K. Holcomb          Update to OOP structure
+        !    01/27/21     A. C. Foster        Updated to have output be a plot
+        !                                       attribute
+        !
 
+        ! Data dictionary: calling arguments
+		class(SpeciesData), intent(in)  :: self       ! Species object
+		real,               intent(in)  :: drydays    ! Drought index (0-1)
+        real,               intent(out) :: fc_drought ! Growth response to drought (0-1)
 
-		class(SpeciesData), intent(inout) :: self
-		real,               intent(in)    :: drydays, drydays_base
-
-		real                              :: fcdry1, fcdry2
 
 		if (self%drought_tol .eq. 1) then
 
+            ! Very drought tolerant - give extra boost
 			if (self%conifer) then
-				fcdry1 = fdry(drydays_base, 1)*0.33
+				fc_drought = fdry(drydays, 1)*1.1
 			else
-				fcdry1 = fdry(drydays_base, 1)*0.2
+				fc_drought = fdry(drydays, 1)*1.05
 			endif
-
-			fcdry2 = fdry(drydays, 1)
-			self%fc_drought = max(fcdry1, fcdry2)
-
 		else
 
-			self%fc_drought = fdry(drydays, self%drought_tol)
+			fc_drought = fdry(drydays, self%drought_tol)
 
 		end if
+
+        fc_drought = min(max(fc_drought, 0.0), 1.0)
 
 	end subroutine drought_rsp
 
 	!:.........................................................................:
 
-	subroutine flood_rsp(self, floodday)
-		!calculates species-level response to high soil moisture
-		!currently inactive
-		!Inputs/Outputs:
-		!	self:       species instance
-		!Inputs:
-		!	flooddays:  flooding index
 
-		class(SpeciesData), intent(inout)  :: self
-		real,               intent(in)     :: floodday
+	subroutine perm_rsp(p_tol, amlt, fc_perm)
+        !
+        !  Calculates species-level effect of permafrost on growth
+        !  Adapted from Bonan 1989 Ecological Modelling 45:275-306
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    09/08/19     A. C. Foster        Original Code
+        !
 
-		real                               :: fflood
-		integer                            :: k
+        ! Data dictionary: calling arguments
+		integer, intent(in)  :: p_tol    ! Relative permafrost tolerane (1-2; 2 = least tolerant)
+		real,    intent(in)  :: amlt     ! Active layer depth (m)
+		real,    intent(out) :: fc_perm  ! Growth response to permafrost (0-1)
 
-		real, dimension(6)                 :: gama
-		data gama/0.85, 0.8, 0.75, 0.7, 0.65, 0.6/
-
-		k = self%flood_tol
-
-		if (floodday .le. gama(k)) then
-			fflood = 1.0
-		else
-			fflood = 1.0 - ((floodday - gama(k)**2)/((floodday - gama(k))**2 + &
-				gama(k)**2))
-		end if
-
-		if (fflood .ge. 1.0) fflood = 1.0
-		if (fflood .le. 0.0) fflood = 0.0
-
-		self%fc_flood = fflood
-
-	end subroutine flood_rsp
-
-	!:.........................................................................:
-
-	subroutine perm_rsp(p_tol, amlt, resp)
-		!calculates species-level response to active layer thickness
-		  !modified from Bonan (1989)
-		!Author: Adrianna Foster 2018 v. 1.0
-		!Inputs:
-		!	p_tol:  species permafrost tolerance (1: tolerant; 2: intolerant)
-		!	amlt:   active layer depth (m)
-		!Inputs:
-		!	resp:   growth response to permafrost (0-1)
-
-		integer, intent(in)  :: p_tol
-		real,    intent(in)  :: amlt
-		real,    intent(out) :: resp
-
-		real                 :: y
-
+        ! Data dictionary: local variables
+		real :: y ! Growth response to permafrost (0-1)
 
 		if (amlt .le. 0.6) then
-			if (p_tol .eq. 1) then
-				!y = 1.28*amlt
-				y = 0.9*amlt
+            ! Permafrost fairly impactful
+
+            if (p_tol .eq. 1) then
+				y = 0.7*amlt
 			else
 				y = 0.494*amlt
 			end if
 		else if (amlt .gt. 0.6 .and. amlt .le. 1.0) then
+            ! Permafrost somewhat impactful
 			if (p_tol .eq. 1) then
-				y = 1.0
+				y = 0.9*amlt
 			else
 				y = 0.8*amlt
 			end if
 		else if (amlt .gt. 1.0) then
+            ! Permafrost not impactful
 			y = 1.0
 		end if
 
+        ! Must be between 0.0 and 1.0
 		if (y .ge. 1.0) y = 1.0
 		if (y .le. 0.0) y = 0.0
 
-		resp = y
+		fc_perm = y
 
 	end subroutine perm_rsp
 
 	!:.........................................................................:
 
-	function fdry(dryday, k)
-		!helper function for subroutine drought_rsp
-		!Inputs:
-		!	dryday:  drought index (0-1)
-		!	k:       species drought tolerance (1-6; 6 = least tolerant)
-		!Outputs:
-		!	fdry:    response to drought
+	real function fdry(dryday, k)
+        !
+        !  Helper function for drought_rsp subroutine
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/01/05     Y. Xiaodong         Original Code
+        !
 
-		real                 :: fdry
-		real,    intent(in)  :: dryday
-		integer, intent(in)  :: k
+        ! Data dictionary: constants
+        ! Drought response parameters - based on drought tolerance
+        real, dimension(6), parameter :: GAMA = [0.533, 0.4364, 0.3398,        &
+            0.2432, 0.1466, 0.050]
 
-		real                 :: tmp
-		real, dimension(6)   :: gama
-		data gama/0.5, 0.45, 0.4, 0.3, 0.085, 0.025/
+        ! Data dictionary: calling arguments
+		real,    intent(in)  :: dryday ! Drought index (0-1)
+		integer, intent(in)  :: k      ! Relative drought tolerance (1-6; 6 = least tolerant)
 
-		tmp = max(gama(k) - dryday, 0.0)
-		fdry = (tmp/gama(k))**0.5
+        ! Data dictionary: local variables
+		real :: tmp ! Temporary variable
+
+        ! Calculate growth response
+		tmp = max(GAMA(k) - dryday, 0.0)
+		fdry = (tmp/GAMA(k))**0.5
 
 	end function fdry
 

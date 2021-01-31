@@ -1,128 +1,136 @@
 module Climate
 
+!*******************************************************************************
+  !
+  ! This module contains subroutines to compute climate-related variables
+  !
+!*******************************************************************************
+
   use Constants
   use Random
 
   implicit none
 
-!*******************************************************************************
-  !
-  !This module contains subroutines to compute climate-related variables
-  !
-!*******************************************************************************
-
-  real                              :: accumulated_tmin
-  real                              :: accumulated_tmax
-  real, dimension(12)               :: accumulated_precip
-
 contains
 
 	!:.........................................................................:
 
-	subroutine set_site_climate()
-		!sets accumulated tmin, tmax, and precip to 0 for potential climate
-		!change
+	subroutine cov365_state(month_vals, day_vals)
+        !
+        !  Converts monthly state data into daily data
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    01/01/96     Y. Xiaodong         Original Code
+        !
 
-		!Note - ACF 4/30/19: I'm not sure why this is here as an individual
-		 !subroutine
+        ! Data dictionary: constants:
+        ! Julian day for middle of each month, plus one for wrapping around
+        integer, parameter, dimension(13) :: MIDDAYS = [16, 45, 75, 105, 136,  &
+            166, 196, 227, 258, 288, 319, 349, 381]
 
-		accumulated_tmin = 0.0
-		accumulated_tmax = 0.0
-		accumulated_precip = 0.0
+        ! Data dictionary: calling argumnets
+		real, dimension(:), intent(in)    :: month_vals ! Monthly state data
+		real, dimension(:), intent(inout) :: day_vals   ! Daily data
 
-	end subroutine set_site_climate
+        ! Data dictionary: local variables
+		real, dimension(13)  :: monthly_vals ! Local array for monthly values
+		real, dimension(381) :: daily_vals   ! Local array for daily values
+		real                 :: mean_val     ! Mean value
+		integer              :: k, md        ! Looping indices
 
-	!:.........................................................................:
-
-	subroutine cov365(month_vals, day_vals)
-		!converts monthly state data into daily data
-		!Author: Yan Xiaodong, 1996 v. 1.0
-		!Inputs:
-		!   month_vals: vector of monthly state data (temperature/cloud cover)
-		!Outputs:
-		!   day_vals:   vector of daily weather data
-
-		real, dimension(:), intent(in)    :: month_vals
-		real, dimension(:), intent(inout) :: day_vals
-
-		real, dimension(13)               :: monthly_vals
-		real, dimension(381)              :: dayly_vals
-		real                              :: mean_val
-		integer                           :: middays(13), k, md
-		data middays/16, 45, 75, 105, 136, 166, 196, 227, 258, 288, 319, 349,  &
-						381/
-
+        ! Set 13th index to January so we can wrap around
 		monthly_vals(13) = month_vals(1)
+
+        ! Fill the rest with input values
 		do k = 1, 12
 			monthly_vals(k) = month_vals(k)
 		end do
 
 		do k = 1, 12
+            ! Average value between next month's and this month, scaled by
+            ! days inbetween the midpoints
 			mean_val = (monthly_vals(k + 1) - monthly_vals(k))/                &
-				float(middays(k + 1) - middays(k))
-			do md = middays(k), middays(k + 1)
-				dayly_vals(md) = monthly_vals(k) + mean_val*float(md -         &
-					middays(k))
+				float(MIDDAYS(k + 1) - MIDDAYS(k))
+
+            ! Average plus scaling towards the midpoint
+			do md = MIDDAYS(k), MIDDAYS(k + 1)
+				daily_vals(md) = monthly_vals(k) + mean_val*float(md -         &
+					MIDDAYS(k))
 			end do
 		end do
 
+        ! Fill with daily values, accounting for wrapping around
 		do md = 16, 365
-			day_vals(md) = dayly_vals(md)
+			day_vals(md) = daily_vals(md)
 		end do
-
 		do md = 1, 15
-			day_vals(md) = dayly_vals(365 + md)
+			day_vals(md) = daily_vals(365 + md)
 		end do
 
 		return
 
-	end subroutine cov365
+	end subroutine cov365_state
 
 	!:.........................................................................:
 
-	subroutine cov365a(month_vals, day_vals)
-		!converts monthly integrated data into daily data randomly
-		!Author: Yan Xiaodong, 1996 v. 1.0
-		!Inputs:
-		!   month_vals: vector of monthly integrated data (precipitation)
-		!Outputs:
-		!   day_vals:   vector of daily weather data
+	subroutine cov365_integr(month_vals, day_vals)
+        !
+        !  Converts monthly integrated data (i.e. rainfall) into daily data
+        !  Number of rain days is a function of monthly rainfall amount (cm)
+		!  Basic feature is: 100 cm = 25 days, 1 cm rain = 1 day
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    01/01/96     Y. Xiaodong         Original Code
+        !
 
-		real, dimension(:), intent(in)    :: month_vals
-		real, dimension(:), intent(inout) :: day_vals
+        ! Data dictionary: constants
+        ! Number of days in each month
+        integer, dimension(12), parameter :: MODAYS = [31, 28, 31, 30, 31, 30, &
+            31, 31, 30, 31, 30, 31]
 
-		real                              :: raindays, r_day, p_rday, r_rand
-		integer                           :: modays(12), md, i, k, iraindays
-		integer                           :: inum
-		data modays/31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31/
+        ! Data dictionary: calling arguments
+		real, dimension(:), intent(in)    :: month_vals ! Monthly integrated data
+		real, dimension(:), intent(inout) :: day_vals   ! Daily data
 
-		!number of rain days is function of monthly rainfall amount (cm)
-			!basic feature is: 100 cm = 25 days, 1 cm rain = 1 day
+        ! Data dictionary: local variables
+		real     :: raindays  ! Number of days with rainfall in a month
+        real     :: r_day     ! How much it rains per day (cm)
+        real     :: p_rday    ! Proportion of rainy days in a month (0-1)
+        real     :: r_rand    ! Random number (uniform)
+        integer  :: iraindays ! Number of days with rainfall in a month
+		integer  :: md, i, k  ! Looping indices
+		integer  :: inum      ! Number of rain days left to distribute
 
 		md = 0
 		do k = 1, 12
-			!calculate how many days it rains this month
+
+			! Calculate how many days it rains each month
 			raindays = min1(25.0, month_vals(k)/4.0 + 1.0)
 			iraindays = int(raindays)
 
-			!calculate how much rain per rain day
+			! Calculate how much rain per rain day
 			r_day = month_vals(k)/float(iraindays)
 
-			!calculate what percentage of days it rains this month
-			p_rday = raindays/modays(k)
+			! Calculate what percentage of days it rains this month
+			p_rday = raindays/MODAYS(k)
 
-			!for each day in month, add rain amount to each day randomly such
-				!that it adds up to amount of rain that month
+			! For each day in month, add rain amount to each day randomly such
+		    ! that it adds up to amount of rain that month
 			inum = iraindays
-			do i = 1, modays(k)
+			do i = 1, MODAYS(k)
 				md = md + 1
-				!if any rain left to add
+				! If any rain left to add
 				if (inum .gt. 0) then
+                    ! Get random number
 					r_rand = clim_urand()
 					if(r_rand .le. p_rday) then
-						!add amount of rain each day to that day's rain
+						! Add amount of rain each day to that day's rain
 						day_vals(md) = r_day
-						!decrement number of rain days
+						! Decrement number of rain days left to add
 						inum = inum - 1
 					else
 						day_vals(md) = 0.0
@@ -132,7 +140,7 @@ contains
 				end if
 			end do
 
-			!if any rain days left over add rest of rain to middle of month
+			! If any rain days left over add rest of rain to middle of month
 			if (inum .gt. 0) then
 				day_vals(md - 15) = float(inum)*r_day
 			end if
@@ -141,101 +149,142 @@ contains
 
 		return
 
-	end subroutine cov365a
+	end subroutine cov365_integr
 
 	!:.........................................................................:
 
-	subroutine ex_rad(jd, latit, slope, aspect, cld, erad, sun, st, sunrise_hr)
-		!calculates daily TOA and surface solar radiation
-		!adapted from Bonan 1989 Ecological Modelling 45:275-306
-		!Author: Adrianna Foster, 2018 v. 1.0
-		!Inputs:
-		!  jd:         Julian Day
-		!  latit:      latitude of site (degrees)
-		!  slope:      slope of site (degrees)
-		!  aspect:     aspect of site (degrees)
-		!  cld:        cloud cover (tenths of sky covered)
-		!Outputs:
-		!  erad:       top-of-atmosphere solar radiation (MJ/m2/day)
-		!  sun:        surface solar radiation (cal/cm2/day)
-		!  st:         horizontal surface solar radiation (cal/cm2/day)
-		!  sunrise_hr: hour of sunrise
+	subroutine solar_rad(jd, latit, slope, aspect, cld, erad, sun, st,         &
+            sunrise_hr)
+        !
+        !  Calculates daily top-of-atmosphere and surface solar radiation.
+        !  Also returns hour of sunrise.
+        !
+        !  Adapted from Bonan 1989 Ecological Modelling 45:275-306
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/10/18     A. C. Foster         Original Code
+        !
 
-		integer,  intent(in)   :: jd
-		real,     intent(in)   :: latit, slope, aspect, cld
-		real,     intent(out)  :: erad, sun, st
-		integer,  intent(out)  :: sunrise_hr
+        ! Data dictionary: constants:
+        real, parameter :: S = 2809.44 ! Solar constant (cal/cm2/day)
+        ! Parameters for attenuating solar radiation through atmosphere (Bonan 1989)
+        ! These are for North America
+        real, dimension(3), parameter :: AT = [-7.130, 0.812, 0.440]
 
-		real                   :: temp_omega, rlat, zs, azw, dist, dec
-		real                   :: omega, erad1, erad2, sol_hr, sol_alt
-		real                   :: azs, ang1, ang2, xx, yy, st1, df
-		real                   :: dr, angsum, altsum, akt, Rb, Rd
-		real                   :: A
-		integer                :: hr
-		integer, dimension(24) :: sun_hr
+        ! Data dictionary: calling arguments
+		integer,  intent(in)  :: jd         ! Julian day
+		real,     intent(in)  :: latit      ! Latitude (degrees)
+        real,     intent(in)  :: slope      ! Slope (degrees)
+        real,     intent(in)  :: aspect     ! Aspect (degrees)
+        real,     intent(in)  :: cld        ! Cloud cover (tenths of sky covered)
+		real,     intent(out) :: erad       ! Top of atmosphere radiation (cal/cm2/day)
+        real,     intent(out) :: sun        ! Surface solar radiation (cal/cm2/day)
+        real,     intent(out) :: st         ! Horizontal surface solar radiation (cal/cm2/day)
+		integer,  intent(out) :: sunrise_hr ! Hour of sunrise
 
+        ! Data dictionary: local variables
+        integer, dimension(24) :: sun_hr     ! Hours where we have sun
+        real                   :: rlat       ! Latitude (radians)
+        real                   :: rslope     ! Slope (radians)
+        real                   :: az_wall    ! Wall azimuth angle (radians)
+        real                   :: r_dist     ! Relative Earth-Sun distance (AU; 1 AU = 1.485E11 m)
+        real                   :: A          ! Temporary variable for calculating solar declination
+        real                   :: dec        ! Solar declination (radians)
+		real                   :: temp_omega ! Initial value for sunset hour angle (radians)
+		real                   :: omega      ! Sunset/sunrise hour angle (radians)
+        real                   :: sol_hr     ! Solar hour angle (radians)
+        real                   :: sol_alt    ! Solar altitude angle (radians)
+		real                   :: azs        ! Azimuth angle of sun from south (radians)
+        real                   :: ang1       ! Temporary variable for calculating incidence angle
+        real                   :: sol_inc    ! Solar incidence angle (radians)
+        real                   :: xx, yy     ! Temporary variables for summing altitude & incidence angles
+        real                   :: angsum     ! Sum of hourly incidence angles (radians)
+        real                   :: altsum     ! Sum of hourly altitude angles (radians)
+        real                   :: akt        ! Fraction of TOA radiation attenuated by atmosphere
+        real                   :: df         ! Horizontal surface diffuse radiation (cal/cm2/day)
+        real                   :: dr         ! Horizontal surface direct beam radiation (cal/cm2/day)
+		real                   :: Rb         ! Direct beam tilt factor
+        real                   :: Rd         ! Diffuse tilt factor
+		integer                :: hr         ! Looping index
+
+
+        ! Initialize accumulators
 		angsum = 0.0
 		altsum = 0.0
 
-		!convert latitude to radians
-		rlat = deg2rad*latit
+		! Convert latitude to radians
+		rlat = DEG2RAD*latit
 
-		!convert slope degrees to radians
-		zs = deg2rad*slope
+		! Convert slope degrees to radians
+		rslope = DEG2RAD*slope
 
-		!convert aspect from degrees to radians and calculate wall azimuth angle
-		azw = (180.0 - aspect)*pi/180.0
+		! Calculate wall azimuth angle
+		az_wall = (180.0 - aspect)*pi/180.0
 
-		!calculate earth-sun distance
-		dist = 1.0 + Ac*cos(2*pi*float(jd)/365.0)
+		! Calculate realtive Earth-Sun distance (AU)
+        ! Brock 1981 Ecological Modelling 14:1-19
+        ! Nicholls & Child 1979 Solar Energy 22(1)
+		!r_dist = 1.0 + 0.033*cos(2*pi*float(jd)/365.0)
+        r_dist = 1.0/(1.0 + (0.033*cos(360.0*float(jd)/365.0)))**(1/2)
 
-		!calculate solar declination (radians)
-		A = (284.0 + float(jd))/365.0*2.0*pi
+		! Calculate solar declination (radians)
+        ! Cooper 1969
+		A = ((284.0 + float(jd)))/365.0*2.0*pi
 		dec = 23.45*sin(A)*pi/180.0
 
-		!initial value for sunset hour angle (radians)
+		! Initial value for sunset hour angle (radians)
+        ! Brock 1981 Ecological Modelling 14:1-19
 		temp_omega = -tan(rlat)*tan(dec)
 
-		!modify sunset hour angle based on sunset/sunrise occurence
-		if (temp_omega .ge. 1.0) then !sun never rises
-		   omega = 0.0
-		else if (temp_omega .le. -1.0) then !sun never sets
-		   omega = pi
-		else !all other times
-		   omega = acos(temp_omega)
+		! Modify sunset hour angle based on sunset/sunrise occurence
+        ! Keith & Kreider 1978 Principles of Solar Engineering
+		if (temp_omega .ge. 1.0) then
+           ! Sun never rises
+            omega = 0.0
+		else if (temp_omega .le. -1.0) then
+            ! Sun never sets
+            omega = pi
+		else
+            ! Calculate angle
+            omega = acos(temp_omega)
 		end if
 
-		!calculate extraterrestrial radiation (MJ/m2/day)
-		erad1 = Amp*dist*cos(rlat)*cos(dec)*(sin(omega) - omega*cos(omega))
-		erad = max(erad1, 0.0)
+		! Calculate top of atmosphere radiation (cal/cm2/day)
+		 erad = S/pi*(1.0/r_dist**2)*cos(rlat)*cos(dec)*(sin(omega) -          &
+            omega*cos(omega))
+		 erad = max(erad, 0.0)
 
-		!convert to cal/cm2/day
-		erad2 = erad*239.006*1000/10000
-
-		!calculate hourly solar incidence and altitude angles
+		! Calculate hourly solar incidence and altitude angles
+        ! Bonan 1989
 		do hr = 1, 24
-			sol_hr = 15.0*(12.0 - float(2*hr - 1)/2.0)*pi/180
+
+            ! Solar hour angle (radians)
+			sol_hr = 15.0*(12.0 - float(2*hr - 1)/2.0)*pi/180.0
+
+            ! Solar altitude angle (radians)
 			sol_alt = asin(sin(rlat)*sin(dec) + cos(rlat)*cos(dec)*cos(sol_hr))
 
-			!azimuth angle of sun from south
+			! Azimuth angle of sun from south (radians)
 			azs = asin(cos(dec)*sin(sol_hr)/cos(sol_alt))
 
-			!solar incidence angle
-			ang1 = sin(dec)*sin(rlat)*cos(zs) -                                &
-				   sin(dec)*cos(rlat)*sin(zs)*cos(azw) +                       &
-				   cos(dec)*cos(sol_hr)*cos(rlat)*cos(zs) +                    &
-				   cos(dec)*cos(sol_hr)*sin(rlat)*sin(zs)*cos(azw) +           &
-				   cos(dec)*sin(zs)*sin(azw)*sin(sol_hr)
+			! Solar incidence angle (radians)
+			ang1 = sin(dec)*sin(rlat)*cos(rslope) -                            &
+				   sin(dec)*cos(rlat)*sin(rslope)*cos(az_wall) +               &
+				   cos(dec)*cos(sol_hr)*cos(rlat)*cos(rslope) +                &
+				   cos(dec)*cos(sol_hr)*sin(rlat)*sin(rslope)*cos(az_wall) +   &
+				   cos(dec)*sin(rslope)*sin(az_wall)*sin(sol_hr)
+			sol_inc = acos(ang1)
 
-			ang2 = acos(ang1)
-
-			!sunrise/sunset occurs when ang2 = pi/2 or sol_alt = 0
-			if (ang2 .ge. (pi/2.0) .or. sol_alt .le. 0.0) then
+            ! Sum up incidence and altitude angles
+			if (sol_inc .ge. (pi/2.0) .or. sol_alt .le. 0.0) then
+                ! Sun is not above horizon
 				xx = 0.0
 				yy = 0.0
 				sun_hr(hr) = 0
 			else
-				xx = cos(ang2)
+				xx = cos(sol_inc)
 				yy = sin(sol_alt)
 				sun_hr(hr) = 1
 			end if
@@ -246,145 +295,174 @@ contains
 		end do
 
 		sunrise_hr = 12
-		!find sunrise hour
+		! Find sunrise hour
 		do hr = 1, 24
 			if (sun_hr(hr) > 0) then
 				sunrise_hr = hr
 				exit
 			endif
-
 		end do
 
-		!attenuate solar radiation through atmosphere
-		st1 = -7.13 + 0.812*erad2-0.44*erad2*(cld/10.0)
-		st = max(st1, 0.0)
+		! Calculate horizontal surface radiation (cal/cm2/day)
+        ! Bonan 1989
+		st = max(AT(1) + AT(2)*erad - AT(3)*erad*(cld/10.0), 0.0)
 
-		if (erad2 .gt. 0.0) then
-			akt = st/erad2
+        ! Calculate fraction of TOA radiation attenuated by atmosphere
+		if (erad .gt. 0.0) then
+			akt = st/erad
 		else
 			akt = 0.0
 		end if
 
-		df = (1.0045 + 0.04349*akt - 3.5227*akt**2.0 + 2.6313*akt**3.0)*st
-		if (akt .gt. (0.75)) df = 0.166*st
+        ! Calculate horizontal surface diffuse radiation (cal/cm2/day)
+        ! Keith & Kreider 1978 Principles of Solar Engineering
+		df = (1.0045 + 0.04349*akt - 3.5227*akt**2 + 2.6313*akt**3)*st
+		if (akt .gt. 0.75) df = 0.166*st
 		if (df .lt. 0.0) df = 0.0
+
+        ! Calculate horizontal surface direct beam radiation (cal/cm2/day)
 		dr = st - df
 
-		!calculate direct beam tilt factor
+		! Calculate direct beam tilt factor
 		if (altsum .ne. 0.0) then
 			Rb = angsum/altsum
 		else
 			Rb = 0.0
 		end if
 
-		!calculate diffuse radiation tilt factor
-		Rd = (cos(zs/2.0))**2.0
+		! Calculate diffuse radiation tilt factor
+		Rd = (cos(rslope/2.0))**2
 
-		!calculate mean solar radiation at surface
+		! Calculate surface solar radiation (cal/cm2/day)
 		sun = Rb*dr + Rd*df
 
-		return
-
-	end subroutine ex_rad
+	end subroutine solar_rad
 
 	!:.........................................................................:
 
-	function jensenhaise(ta, sun, elev, e2, e1)
-		!calculation of potential evapotranspiration (cm/day)
-		!adapted from Bonan 1989 Ecological Modelling 45:275-306
-		!Author: Adrianna Foster, 2018 v. 1.0
-		!Inputs:
-		!   ta:    mean daily air temperature (degrees C)
-		!   sun:   mean solar radiation (cal/cm2/day)
-		!   elev:  elevation of site (m)
-		!   e2:    saturation vapor pressure (mbar) at tmax of warmest
-		!           month of year
-		!   e1:    saturation vapor pressure (mbar) at tmin of warmest
-		!           month of year
-		!Outputs:
-		!   jensenhaise: potential evapotranspiration (cm/day)
+	real function pot_evap(ta, sun, elev, e2, e1)
+        !
+        !  Calculates daily potential evapotranspiration (cm)
+        !  Uses modified Priestley-Taylor equation
+        !  Adapted from Bonan 1989 Ecological Modelling 45:275-306
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/10/17     A. C. Foster         Original Code
+        !
 
-		real                :: jensenhaise
-		real,    intent(in) :: ta, sun, elev, e2, e1
+        ! Data dictionary: calling arguments
+		real, intent(in) :: ta   ! Air temperature (degC)
+        real, intent(in) :: sun  ! Surface solar radiation (cal/cm2/day)
+        real, intent(in) :: elev ! Elevation (m)
+        real, intent(in) :: e1   ! Saturation vapor pressure (mbar) at tmin of warmest month
+        real, intent(in) :: e2   ! Saturation vapor pressure (mbar) at tmax of warmest month
 
-		real                :: a, b, hvap, evap
+        ! Data dictionary: local variables
+		real :: a, b ! Coefficients
+        real :: hvap ! Latent heat of vaporization (kca/kg)
+        real :: evap ! Local variable for evaporation (cm)
 
-		!calculate latent heat of vaporization
-		hvap = 597.391 - 0.5680*ta !kcal/kg
+		! Calculate latent heat of vaporization (kcal/kg)
+		hvap = 597.391 - 0.5680*ta
 
-		!calculate coefficients
+		! Calculate coefficients
+        ! Campbell 1977 An Introduction to Environmental Biophysics
 		a = 1.0/(38.0 - (2.0*elev/305.0) + 380.0/(e2 - e1))
 		b = -2.5  - 0.14*(e2 - e1) - elev/550.0
 
-		!calculate PET (cm)
+		! Calculate PET (cm)
 		if (ta .gt. 0.0) then
 			evap = a*(ta - b)*sun/hvap
 			evap = max(evap, 0.0)
 		else
+            ! Assume 0.0 PET if ta < 0.0
 			evap = 0.0
 		end if
 
-		jensenhaise = evap
+		pot_evap = evap
 
-	end function jensenhaise
+	end function pot_evap
 
 	!:.........................................................................:
 
-	function hrsabove(tmin, tmax, hrise, thresh)
-		!calculates cumulative hours above a threshold for the day
-		!Author: Adrianna Foster, 2016 v. 1.0
-		!Changelog: ACF - 4/30/10, v. 2.0
-		!Inputs:
-		!   tmin:     minimum temperature (degrees C)
-		!   tmax:     maximum temperature (degrees C)
-		!   hrise:    hour of sunrise
-		!   thresh:   threshold temperature (degrees C)
-		!Outputs:
-		!   hrsabove: hours above threshold temperature
+	real function hrsabove(tmin, tmax, hrise, thresh)
+        !
+        !  Calculates cumulative hours above a threshold for the day
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/01/16     A. C. Foster         Original Code
+        !    04/30/10     A. C. Foster         Added input hour of sunrise
+        !
 
+        ! Data dictionary: constants
+        integer, parameter :: HMAX = 14 ! Hour of maximum temperature
 
-		real                    :: hrsabove
-		real,    intent(in)     :: tmin, tmax, thresh
-		integer, intent(in)     :: hrise
+        ! Data dictionary: calling arguments
+		real,    intent(in) :: tmin   ! Minimum temperature (degC)
+        real,    intent(in) :: tmax   ! Maximum temperature (degC)
+        real,    intent(in) :: thresh ! Threshold temperature (degC)
+		integer, intent(in) :: hrise  ! Hour of sunrise
 
-		real, dimension(24)     :: td
-		real                    :: tmean
-		integer                 :: i, couni
-		integer                 :: hmax = 14
-		integer, dimension(24)  :: h
+        ! Data dictionary: local varuables
+		real,    dimension(24) :: th    ! Hourly temperature (degC)
+		real                   :: tmean ! Mean daily temperature (degC)
+		integer                :: i     ! Looping index
+        integer                :: couni ! Local count for hours above
 
-		data h/0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,   &
-				18, 19, 20, 21, 22, 23/
-
-		couni = 0
-
+	    ! Calculate average temperature
 		tmean = (tmax + tmin)/2.0
 
-		!calculate hourly temperature for the day
-		do i = 1, 24
-			if ((h(i) .ge. 0) .and. (h(i) .lt. hrise)) then
-				td(i) = tmean + ((tmax - tmin)/2.0)*                           &
-					cos((pi*(float(h(i)) + 10.0))/(10.0 + hrise))
-		    else if ((h(i) .ge. hrise) .and. (h(i) .le. hmax)) then
-				td(i) = tmean - ((tmax - tmin)/2.0)*                           &
-					cos((pi*(float(h(i)) - hrise))/(hmax - hrise))
-			else if ((h(i) .gt. hmax) .and. (h(i) .lt. 24)) then
-				td(i) = tmean + ((tmax - tmin)/2.0)*                           &
-					cos((pi*(float(h(i)) + hmax))/(10.0 + hrise))
+		! Calculate hourly temperature for the day
+		do i = 0, 23
+			if ((i .ge. 0) .and. (i .lt. hrise)) then
+				th(i+1) = tmean + ((tmax - tmin)/2.0)*                         &
+					cos((pi*(float(i) + 10.0))/(10.0 + hrise))
+		    else if ((i .ge. hrise) .and. (i .le. HMAX)) then
+				th(i+1) = tmean - ((tmax - tmin)/2.0)*                         &
+					cos((pi*(float(i) - hrise))/(HMAX - hrise))
+			else if ((i .gt. HMAX) .and. (i .lt. 24)) then
+				th(i+1) = tmean + ((tmax - tmin)/2.0)*                         &
+					cos((pi*(float(i) + HMAX))/(10.0 + hrise))
 			end if
 		end do
 
-		!accumulate hours above the threshold temperature
+		! Accumulate hours above the threshold temperature
+        couni = 0
 		do i = 1, 24
-			if (td(i) .gt. thresh) then
+			if (th(i) .gt. thresh) then
 				couni = couni + 1
 			endif
 		enddo
 
-		hrsabove = couni
+		hrsabove = float(couni)
 
 	end function hrsabove
 
 	!:.........................................................................:
+
+    real function esat(ta)
+        !
+        !  Calculates saturation vapor pressure (mbar)
+        !  Adapted from Campbell 1977 An Introduction to Biophysics
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !     10/10/17     A. C. Foster         Original Code
+        !
+
+        ! Data dictionary: calling arguments
+        real,    intent(in) :: ta ! Air temperature (degC)
+
+        esat = 33.8639*((0.00738*ta + 0.8072)**8.0 -                           &
+            0.000019*abs(1.8*ta + 48.0) + 0.001316)
+
+    end function esat
+
+    !:.........................................................................:
 
 end module Climate

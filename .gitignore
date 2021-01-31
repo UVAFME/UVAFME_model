@@ -12,3 +12,5 @@ manual_figures/*
 *blg
 *bbl
 testing/*
+output_data/*
+sample_inputs/*

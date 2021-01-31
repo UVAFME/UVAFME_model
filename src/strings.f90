@@ -1,45 +1,54 @@
 module string
 
-implicit none
-
 !*******************************************************************************
   !
   !This module implements several handy Python-like string functions. It works
   !with ordinary Fortran character variables but requires deferred-size
   !characters from F2003.
-  !Author:  Katherine Holcomb
-  !Date:    2014-06-26
   !
 !*******************************************************************************
 
-   character(len = 26)  :: uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-   character(len = 26)  :: lowercase = "abcdefghijklmnopqrstuvwxyz"
-   character(len = 28)  :: punct = "#$%&()*+,-./:;<=>?@[]^_`{|}~"
-   character(len = 2)   :: ws = ' \t'
-   character            :: single_quote = "'"
-   character            :: double_quote = '"'
+    implicit none
+
+    ! Data dictionary, constants:
+    character(len = 26), parameter :: UPPERCASE = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" ! Upper case letters
+    character(len = 26), parameter :: LOWERCASE = "abcdefghijklmnopqrstuvwxyz" ! Lower case letters
+    character(len = 28), parameter :: PUNCT = "#$%&()*+,-./:;<=>?@[]^_`{|}~"   ! Punctuation
+    character(len = 2),  parameter :: WS = ' \t'                               ! White space
+    character,           parameter :: SINGLE_QUOTE = "'"                       ! Single quote
+    character,           parameter :: DOUBLE_QUOTE = '"'                       ! Double quote
+    character,           parameter :: TAB = '\t'                               ! Tab
 
 contains
 
 	!:.........................................................................:
 
 	subroutine lower(a)
-		!converts all uppercase letters in input string to lowercase
-		!Inputs/Outputs:
-		!	a:  character to be switched to lower case
+        !
+        !  Converts all uppercase letters in the input string to lowercase
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(inout)  :: a
-		integer                            :: n, numchars
-		character                          :: c
+        ! Data dictionary: calling arguments
+		character(len = *), intent(inout) :: a ! Input string
 
-		!check if string has any characters
+        ! Data dictionary: local variables
+		integer   :: n        ! Looping index
+        integer   :: numchars ! Length of string
+		character :: c        ! Temporary string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) then
 			return
 		endif
 
-		!cycle through characters in string and change any uppercase letters to
-		  !lowercase
+		! Cycle through characters in string and change any uppercase letters to
+		! lowercase
 		do n = 1, numchars
 			c = a(n:n)
 			if (is_alpha(c)) then
@@ -56,22 +65,31 @@ contains
 	!:.........................................................................:
 
 	subroutine upper(a)
-		!converts all lowercase letters in input string to uppercase
-		!Inputs/Outputs:
-		!	a:  character to be switched to upper case
+        !
+        !  Converts all lowercase letters in the input string to uppercase
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(inout)  :: a
-		integer                            :: n, numchars
-		character                          :: c
+        ! Data dictionary: calling arguments
+		character(len = *), intent(inout) :: a ! Input string
 
-		!check if string has any characters
+        ! Data dictionary: local variables
+		integer   :: n        ! Looping index
+        integer   :: numchars ! Length of string
+		character :: c        ! Temporary string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) then
 			return
 		endif
 
-		!cycle through characters in string and change any lowercase letters to
-		  !uppercase
+		! Cycle through characters in string and change any lowercase letters to
+		! uppercase
 		do n = 1, numchars
 			c = a(n:n)
 			if (is_alpha(c)) then
@@ -88,33 +106,41 @@ contains
 	!:.........................................................................:
 
 	logical function is_upper(a)
-		!checks if a string is all uppercase
-		!Inputs:
-		!	a:        character to be checked for uppercase
-		!Outputs:
-		!	is_upper: all upper case?
+        !
+        !  Checks if string is all uppercase
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(in)   :: a
-		integer                          :: n, numchars
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: a ! Input string
 
-		!if no characters, can't be uppercase
+        ! Data dictionary: local variables
+		integer :: n        ! Looping index
+        integer :: numchars ! Length of string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) then
 			is_upper = .false.
 			return
 		endif
 
-		!cycle through characters anc check for uppercase letters
+		! Cycle through characters and check for uppercase letters
 		do n = 1, numchars
-			!just space or punctuation?
+
+            ! Space or punctuation?
 			if (is_space(a(n:n)) .or. is_punctuation(a(n:n))) then
 				if (numchars > 1) cycle
 			else
 				is_upper = .false.
 			endif
 
-			!check for all uppercase
-			if (verify(a(n:n), uppercase) == 0) then
+			! Check for all uppercase
+			if (verify(a(n:n), UPPERCASE) == 0) then
 				is_upper = .true.
 			else
 				is_upper = .false.
@@ -127,33 +153,40 @@ contains
 	!:.........................................................................:
 
 	logical function is_lower(a)
-		!checks to see if string is all lowercase
-		!Inputs:
-		!	a:        character to be checked for lowercase
-		!Outputs:
-		!	is_lower: all lower case?
+        !
+        !  Checks if string is all lowercase
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(in)  :: a
-		integer                         :: n, numchars
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: a ! Input string
 
-		!check to see if string has any characters
+        ! Data dictionary: local variables
+		integer :: n        ! Looping index
+        integer :: numchars ! Length of string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) then
 			is_lower = .false.
 			return
 		endif
 
-		!cycle through characters and check for lowercase letters
+		! Cycle through characters and check for lowercase letters
 		do n = 1, numchars
-				!just space or punctuation?
+			! Space or punctuation?
 			if (is_space(a(n:n)) .or. is_punctuation(a(n:n))) then
 				if ( numchars > 1) cycle
 			else
 				is_lower = .false.
 			endif
 
-			!check for all lowercase
-			if (verify(a(n:n), lowercase) == 0) then
+			! Check for all lowercase
+			if (verify(a(n:n), LOWERCASE) == 0) then
 				is_lower = .true.
 			else
 				is_lower = .false.
@@ -166,23 +199,30 @@ contains
 	!:.........................................................................:
 
 	logical function is_space(a)
-		!checks to see if string is comprised of just space(s)
-		!Inputs:
-		!	a:        character to be checked for spaces
-		!Outputs:
-		!	is_space: all spaces?
+        !
+        !  Checks if string is comprised of just space(s)
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(in)  :: a
-		integer                         ::n, numchars
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: a ! Input string
 
-		!see if string has any characters
+        ! Data dictionary: local variables
+		integer :: n        ! Looping index
+        integer :: numchars ! Length of string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) then
 			is_space = .false.
 			return
 		endif
 
-		!cycle through characters and check for all spaces
+		! Cycle through characters and check for spaces
 		do n = 1, numchars
 			if (a(n:n) == ' ' .or. a(n:n) == '\t') then
 				is_space = .true.
@@ -197,26 +237,33 @@ contains
 	!:.........................................................................:
 
 	logical function is_punctuation(a)
-		!checks to see if string is comprised of all punctuation characters
-		!Inputs:
-		!	a:               character to be checked for punctuation
-		!Outputs:
-		!	is_punctutation: all punctuation?
+        !
+        !  Checks if string is comprised of just punctuation characters
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len=*), intent(in)  :: a
-		integer                       :: n, numchars
+        ! Data dictionary: calling arguments
+		character(len=*), intent(in) :: a ! Input string
 
-		!check to see if string has any characters
+        ! Data dictionary: local variables
+		integer :: n        ! Looping index
+        integer :: numchars ! Length of string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) then
 			is_punctuation = .false.
 			return
 		endif
 
-		!cycle through characters and check for all punctuation
+		! Cycle through characters and check for punctuation
 		do n = 1, numchars
-			if (verify(a(n:n), punct) == 0 .or. a(n:n) == single_quote .or.    &
-						a(n:n) == double_quote)   then
+			if (verify(a(n:n), PUNCT) == 0 .or. a(n:n) == SINGLE_QUOTE .or.    &
+						a(n:n) == DOUBLE_QUOTE)   then
 				is_punctuation = .true.
 			else
 				is_punctuation = .false.
@@ -229,25 +276,32 @@ contains
 	!:.........................................................................:
 
 	logical function is_alpha(a)
-		!checks to see if string is all alpha characters
-		!Inputs:
-		!	a:        character to be checked for alpha
-		!Outputs:
-		!	is_alpha: all alpha characters?
+        !
+        !  Checks if string is alpha only
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(in)  :: a
-		integer                         :: n, numchars
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: a ! Input string
 
-		!check to see if string has any characters
+        ! Data dictionary: local variables
+		integer :: n        ! Looping index
+        integer :: numchars ! Length of string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) return
 
-		!cycle through characters and check for alpha
+		! Cycle through characters and check for alpha
 		do n = 1, numchars
 			if (is_upper(a(n:n)) .or. is_lower(a(n:n))) then
-				is_alpha=.true.
+				is_alpha = .true.
 			else
-				is_alpha=.false.
+				is_alpha = .false.
 				return
 			endif
 		enddo
@@ -257,20 +311,27 @@ contains
 	!:.........................................................................:
 
 	logical function is_digit(a)
-		!checks if string is numbers only
-		!Inputs:
-		!	a:        character to be checked for numbers
-		!Outputs:
-		!	is_digit: all numbers?
+        !
+        !  Checks if string is numeric only
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len=*), intent(in)  :: a
-		integer                       :: n, numchars
+        ! Data dictionary: calling arguments
+		character(len=*), intent(in) :: a ! Input string
 
-		!check if string has any characters
+        ! Data dictionary: local variables
+		integer :: n        ! Looping index
+        integer :: numchars ! Length of string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) return
 
-		!cycle through characters and check for all numeric
+		! Cycle through characters and check for numeric
 		do n = 1, numchars
 			if ((ichar(a(n:n)) >= 48 .and. ichar(a(n:n)) <= 57)) then
 				is_digit = .true.
@@ -285,20 +346,27 @@ contains
 	!:.........................................................................:
 
 	logical function is_alnum(a)
-		!check to see if string is only alphanumeric
-		!Inputs:
-		!	a:        character to be checked for alphanumeric
-		!Outputs:
-		!	is_alnum: all alphanumeric?
+        !
+        !  Checks if string is alphanumeric
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(in)  :: a
-		integer                         :: n, numchars
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: a ! Input string
 
-		!check if string has any characters
+        ! Data dictionary: local variables
+		integer :: n        ! Looping index
+        integer :: numchars ! Length of string
+
+		! Check length of string
 		numchars = len(a)
 		if (numchars == 0) return
 
-		!cycle through characters and check for all alphanumeric
+		! Cycle through characters and check for alphanumeric
 		do n = 1, numchars
 			if (is_alpha(a(n:n)) .or. is_digit(a(n:n))) then
 				is_alnum = .true.
@@ -313,77 +381,81 @@ contains
 	!:.........................................................................:
 
 	subroutine split(string, fields, delimiter)
-		!splits a string (e.g. row of a file) by a delimiter and returns fields
-		  !of values
-		!Inputs/Outputs:
-		!	string:    string to split
-		!Inputs:
-		!	delimiter: delimiter by which to split string
-		!Outputs:
-		!	fields:    array with fields from string split by delimiter
+        !
+        !  Splits a string (e.g. row of a file) by a delimiter and returns
+        !   an array of values.
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *),              intent(inout)  :: string
-		character(len = *), optional,    intent(in)     :: delimiter
-		character(len = :), allocatable, intent(out)    :: fields(:)
+        ! Data dictionary: calling arguments
+		character(len = *),              intent(inout) :: string    ! Input string
+		character(len = *), optional,    intent(in)    :: delimiter ! Delimiter
+		character(len = :), allocatable, intent(out)   :: fields(:) ! Array with fields from split string
 
-		integer,            allocatable, dimension(:)   :: locs, strlens
-		character(len = :), allocatable                 :: delimit
-		character(len = 1)                              :: tab = '\t'
-		integer                                         :: n, numchars
-		integer                                         :: len_delim
-		integer                                         :: maxlen
-		integer                                         :: num_delims
-		integer                                         :: numfields
-		integer                                         :: counter
+        ! Data dictionary: local variables
+		integer,            allocatable, dimension(:) :: locs       ! Locations of the deliminter in input string
+        integer,            allocatable, dimension(:) :: strlens    ! Length of each string in the output array
+		character(len = :), allocatable               :: delimit    ! Delimiter
+		integer                                       :: n          ! Looping index
+        integer                                       :: numchars   ! Length of input string
+		integer                                       :: len_delim  ! Length of delimiter
+		integer                                       :: maxlen     ! Maximum length of strings in output array
+		integer                                       :: num_delims ! Number of delimiters found in input string
+		integer                                       :: numfields  ! Number of fields in output array
+		integer                                       :: counter    ! Looping index
 
-        !deallocate fields if already allocated
+        ! Deallocate fields if already allocated
 		if (allocated(fields)) deallocate(fields)
 
-        !get length of string - check to make sure anything in string
+        ! Get length of string - check to make sure anything in string
 		numchars = len(string)
 		if (numchars == 0) then
 			allocate(character(1) :: fields(0))
 			return
 		endif
 
-        !if delimiter present, set to delimit, otherwise set to space
+        ! Ff delimiter present, set to delimit, otherwise set to space
 		if (present(delimiter)) then
 			allocate(delimit, source = delimiter)
 		else
 			allocate(character(len = 1) :: delimit)
 			delimit = ' '
 
-			!need to remove tabs and compress white space from string if
-			  !delimiter is a space
-			call remove(string, tab)
+			! Need to remove tabs and compress white space from string if
+			! delimiter is a space
+			call remove(string, TAB)
 			call compress_ws(string)
 		endif
 
-        !find locations where delimiter is in string
+        ! Find locations where delimiter is in string
 		call findlocs(locs, string, delimit)
 		num_delims = size(locs)
 		if (num_delims == 0) then
-			!delimiter not found, return empty list
+			! Delimiter not found, return empty list
 			allocate(character(1) :: fields(0))
 			return
 		endif
 
-        !get length of delimiter
+        ! Get length of delimiter
 		len_delim = len(delimit)
 
-		!check to see how many fields there should be
+		! Check to see how many fields there should be
 		if (locs(num_delims) + len_delim >= len_trim(string)) then
-			!nothing after last delimiter
+			! Nothing after last delimiter
 			numfields = num_delims
 		else
-			!value after last delimiter
+			! Value after last delimiter
 			numfields = num_delims + 1
 		endif
 
-		!allocate strlens to number of fields
+		! Allocate strlens to number of fields
 		allocate(strlens(numfields))
 
-		!get the length of each string within fields
+		! Get the length of each string within fields
 		if (size(locs) == 1) then
 			if (locs(1) > 1) then
 				strlens(1) = locs(1) - 1
@@ -403,7 +475,7 @@ contains
 			endif
 		endif
 
-		!must be values within the delimiters
+		! Must be values within the delimiters
 		maxlen = maxval(strlens)
 		if (maxlen > 0) then
 			allocate(character(maxlen) :: fields(numfields))
@@ -412,7 +484,7 @@ contains
 			return
 		endif
 
-		!populate fields with strings within delimiter
+		! Populate fields with strings within delimiter
 		counter = 1
 		do n = 1, numfields - 1
 			fields(n) = string(counter:locs(n) - 1)
@@ -429,26 +501,32 @@ contains
 	!:.........................................................................:
 
 	subroutine join(string, fields, delimiter)
-		!joins a string together to form a delimeter-separated row of data
-		!Inputs:
-		!	fields:    array of values to join
-		!	delimiter: delimiter by which to split string
-		!Outputs:
-		!	string: string with values from fields separated by delimiter
+        !
+        !  Joins an array of strings together to form a delimeter-separated row
+        !   of data
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), dimension(:),  intent(in)  :: fields
-		character(len = *), optional,      intent(in)  :: delimiter
-		character(len = :), allocatable,   intent(out) :: string
+        ! Data dictionary: calling arguments
+		character(len = *), dimension(:), intent(in)  :: fields    ! Array to join
+		character(len = *), optional,     intent(in)  :: delimiter ! Delimiter
+		character(len = :), allocatable,  intent(out) :: string    ! Output string
 
-		character(len = :), allocatable                :: delimit
-		integer                                        :: n, numchars
-		integer                                        :: numfields
-		integer                                        :: len_delim
-		integer                                        :: maxlen
-		integer                                        :: counter
-		integer                                        :: nextfield_len
+        ! Data dictionary: local variables
+		character(len = :), allocatable :: delimit       ! Delimiter
+		integer                         :: n             ! Looping index
+        integer                         :: numchars      ! Number of characters to join
+		integer                         :: numfields     ! Number of fields to join
+		integer                         :: len_delim     ! Length of delimiter
+		integer                         :: maxlen        ! Maximum length within fields
+		integer                         :: counter       ! Looping index
+		integer                         :: nextfield_len ! Length of next field
 
-		!use space if no delimiter present
+		! Use space if no delimiter present
 		if (present(delimiter)) then
 			allocate(delimit, source = delimiter)
 		else
@@ -457,25 +535,26 @@ contains
 		endif
 		len_delim = len(delimit)
 
-		!get number of fields to join
+		! Get number of fields to join
 		numfields = size(fields)
 
-		!must be some values to join
+		! Must be some values to join
 		if (numfields == 0) then
 			allocate(character(len = 1) :: string)
 			string = ''
 			return
 		endif
 
-		!maximum length within fields
+		! Maximum length within fields
 		maxlen = maxval(len_trim(fields(:)))
 
-		!number of characters to join
+		! Number of characters to join
 		numchars = sum(len_trim(fields(:)))
 
+        ! Allocate correct length to output string
 		allocate(character(numchars + (numfields - 1)*len_delim) :: string)
 
-		!add fields to string and split by delimiter
+		! Add fields to string and split by delimiter
 		counter = 1
 		do n = 1, numfields - 1
 			nextfield_len = len_trim(fields(n)) + len_delim
@@ -489,38 +568,46 @@ contains
 	!:.........................................................................:
 
 	subroutine replace(string, old, new)
-		!replaces character(s) in string with new character(s). string will have
-          !to be long enough to accommodate changes in this version
-        !Inputs/Outputs:
-		!	string:  input string to change
-		!Inputs:
-		!	old:     character to replace
-		!	new:     replacement character
+        !
+        !  Replaces character(s) in a string with new character(s).
+        !  String will have to be long enough to accomodate changes.
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(inout)  :: string
-		character(len = *), intent(in)     :: old, new
+        ! Data dictionary: calling arguments
+		character(len = *), intent(inout) :: string ! String to modify
+		character(len = *), intent(in)    :: old    ! Characters to be replaced
+        character(len=*),   intent(in)    :: new    ! Charcters to replace with
 
-		character(len = len(string))       :: tmpstring
-		integer, allocatable, dimension(:) :: locs
-		integer                            :: len_old, len_new
-		integer                            :: j, m, n, numchars
-		logical                            :: insert
+        ! Data dictionary: local variables
+		character(len = len(string))       :: tmpstring ! Temporary string
+		integer, allocatable, dimension(:) :: locs      ! Locations of old string within input string
+		integer                            :: len_old   ! Length of old substring
+        integer                            :: len_new   ! Length of new substring
+		integer                            :: j, m, n   ! Looping indices
+        integer                            :: numchars  ! Length of input string
+		logical                            :: insert    ! Insert or no?
 
-		!get length string, new, and old substrings
+		! Get length string, new, and old substrings
 		numchars = len(string)
-		len_old = len(old); len_new = len(new)
+		len_old = len(old)
+        len_new = len(new)
 
-		!check to be sure strings have characters
+		! Check to be sure strings have length
 		if (numchars == 0) return
 		if (len_old == 0 .or. len_new == 0) return
 
-		!find locations of old string within input string
+		! Find locations of old string within input string
 		call findlocs(locs, string, old)
 		if (size(locs) == 0) return
 
 		tmpstring = ''
 
-		!replace old with new
+		! Replace old with new
 		n = 1
 		m = 1
 		do while (m <= numchars)
@@ -542,6 +629,7 @@ contains
 			endif
 		enddo
 
+        ! Trim whitespace
 		string = trim(adjustl(tmpstring))
 
 	end subroutine replace
@@ -549,26 +637,30 @@ contains
 	!:.........................................................................:
 
 	subroutine strip(string, substr)
-		!strips leading and trailing ends of string of substring
-		!Inputs/Outputs:
-		!	string:  input string to change
-		!Inputs:
-		!	substr:  character(s) to get rid of
+        !
+        !  Strips leading and trailing ends of string of an input substring
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(inout)  :: string
-		character(len = *), intent(in)     :: substr
+        ! Data dictionary: calling arguments
+		character(len = *), intent(inout) :: string ! Input string
+		character(len = *), intent(in)    :: substr ! Input substring
 
-		integer                            :: sub_len
-		integer                            :: numchars
+        ! Data dictionary: local variables
+		integer :: sub_len  ! Length of input substring
+		integer :: numchars ! Length of input string
 
-		!get length of string and substring
+		! Check length of string and substring
 		numchars = len(string)
 		sub_len = len(substr)
-
 		if (numchars == 0) return
-		if (sub_len == 0 ) return
+		if (sub_len == 0) return
 
-		!strip leading and trailing ends
+		! Strip leading and trailing ends
 		call lstrip(string, substr)
 		call rstrip(string, substr)
 
@@ -577,32 +669,36 @@ contains
 	!:.........................................................................:
 
 	subroutine lstrip(string, substr)
-		!strips left side of string of substring
-		!Inputs/Outputs:
-		!	string:  input string to change
-		!Inputs:
-		!	substr:  character(s) to get rid of
+        !
+        !  Strips left side of string of an input substring
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(inout)  :: string
-		character(len = *), intent(in)     :: substr
+        ! Data dictionary: calling arguments
+		character(len = *), intent(inout) :: string ! Input string
+		character(len = *), intent(in)    :: substr ! Input substring
 
-		character(len = len(string))       :: tmpstring
-		integer, allocatable, dimension(:) :: locs
-		integer                            :: sub_len
-		integer                            :: numchars
+        ! Data dictionary: local variables
+		character(len = len(string))       :: tmpstring ! Temporary string
+		integer, allocatable, dimension(:) :: locs      ! Locations of substring in string
+		integer                            :: sub_len   ! Length of substring
+		integer                            :: numchars  ! Length of string
 
-		!get length of string and substring
+		! Check length of string and substring
 		numchars = len(string)
 		sub_len = len(substr)
-
 		if (numchars == 0) return
 		if (sub_len == 0) return
 
-		!find locations of substring within string
+		! Find locations of substring within string
 		call findlocs(locs, string, substr)
 		if (size(locs) == 0) return
 
-		!string leading edge of string of substring
+		! Strip leading edge of string of substring
 		if (locs(1) == 1) then
 			tmpstring = string(sub_len + 1:)
 		else
@@ -616,33 +712,37 @@ contains
 	!:.........................................................................:
 
 	subroutine rstrip(string, substr)
-		!strips right side of string of substring
-		!Inputs/Outputs:
-		!	string:  input string to change
-		!Inputs:
-		!	substr:  character(s) to get rid of
+        !
+        !  Strips right side of string of an input substring
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(inout)  :: string
-		character(len = *), intent(in)     :: substr
+        ! Data dictionary: calling arguments
+		character(len = *), intent(inout) :: string ! Input string
+		character(len = *), intent(in)    :: substr ! Input substring
 
-		character(len = len(string))       :: tmpstring
-		integer, allocatable, dimension(:) :: locs
-		integer                            :: sub_len
-		integer                            :: numchars
+        ! Data dictionary: local variables
+		character(len = len(string))       :: tmpstring ! Temporary string
+		integer, allocatable, dimension(:) :: locs      ! Locations of substring within string
+		integer                            :: sub_len   ! Length of substring
+		integer                            :: numchars  ! Length of string
 
-		!get length of string and substring
+		! Check length of string and substring
 		numchars = len_trim(string)
 		sub_len = len(substr)
-
 		if (numchars == 0) return
 		if (sub_len == 0) return
 
 
-		!find locations of substring within string
+		! Find locations of substring within string
 		call findlocs(locs, string, substr)
 		if (size(locs) == 0) return
 
-		!string trailing edge of string of substring
+		! Strip trailing edge of string of substring
 		if (locs(size(locs)) == (numchars - sub_len + 1)) then
 			tmpstring = string(:numchars-sub_len)
 		else
@@ -656,41 +756,47 @@ contains
 	!:.........................................................................:
 
 	subroutine remove(string, set)
-		!removes set from an input string
-		!Inputs/Outputs:
-		!	string:  input string to change
-		!Inputs:
-		!	set:     character(s) to get rid of
+        !
+        !  Removes an input substring from an input string
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *),           intent(inout)  :: string
-		character(len = *), optional, intent(in)     :: set
+        ! Data dictionary: calling arguments
+		character(len = *),           intent(inout) :: string ! Input string
+		character(len = *), optional, intent(in)    :: set    ! Input substring (default to whitespace)
 
-		character(len = len(string))                 :: tmpstring
-		character(len = :), allocatable              :: strset
-		character                                    :: c
-		integer                                      :: i, n, numchars
-		integer                                      :: len_set
+        ! Data dictionary: local variables
+		character(len = len(string))    :: tmpstring ! Temporary string
+		character(len = :), allocatable :: strset    ! String to remove
+		character                       :: c         ! Temporary string
+		integer                         :: i, n      ! Looping indices
+        integer                         :: numchars  ! Length of input string
+		integer                         :: len_set   ! Length of substring
 
-		!get length of input string, ingoring trailing blanks
+		! Get length of input string, ingoring trailing blanks
 		numchars = len_trim(string)
 
-		!exit if no characters in string
+		! Exit if no characters in string
 		if (numchars == 0) return
 
-		!if set is present, allocate strset to that, otherwise allocate to
-         !whitespace
+		! If set is present, allocate strset to that, otherwise allocate to
+        ! whitespace
 		if (present(set)) then
 			allocate(strset, source = set)
 		else
-			allocate(strset, source = ws)
+			allocate(strset, source = WS)
 		endif
 
-        !get length of strset and exit if 0
+        ! Get length of strset and exit if 0
 		len_set = len(strset)
 		if (len_set == 0) return
 
-        !loop through characters in input string. Check each character to see if
-          !it is in the set to be removed. If not, add it to a new string.
+        ! Loop through characters in input string. Check each character to see if
+        ! it is in the set to be removed. If not, add it to a new string.
 		tmpstring = ''
 		n = 0
 		do i = 1, numchars
@@ -703,8 +809,7 @@ contains
 			endif
 		enddo
 
-        !return new string without values in 'set', trimmed of whitespace and
-          !adjusted left
+        ! Return new string without values in 'set', trimmed of whitespace
 		string = trim(adjustl(tmpstring))
 
 	end subroutine remove
@@ -712,32 +817,36 @@ contains
 	!:.........................................................................:
 
 	integer function find(string, substr, start, last)
-		!finds first integer location of substring in string
-		!may search within set location in string by using optional start, last
-		!Inputs:
-		!	string: input string
-		!	substr: string to find within substring
-		!Optional Inputs:
-		!	start:  starting index to search within string
-		!	last:	ending index to search within string
-		!Outputs:
-		!	find: integer location of substring in string
+        !
+        !  Finds the first location of a substring in string
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *),  intent(in)  :: string, substr
-		integer, optional,   intent(in)  :: start, last
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: string ! Input string
+        character(len = *), intent(in) :: substr ! Input substring
+		integer, optional,  intent(in) :: start  ! Optional starting location to search
+        integer, optional,  intent(in) :: last   ! Optional ending location to search
 
-		integer                          :: st, lst, numchars
-		integer                          :: i, sub_len
+        ! Data dictionary: local variables
+		integer :: st       ! Starting location to search
+        integer :: lst      ! Ending location to search
+        integer :: numchars ! Length of string
+		integer :: i        ! Looping index
+        integer :: sub_len  ! Length of substring
 
-		!get length of string and substring
+		! Check length of string and substring
 		numchars = len(string)
 		sub_len = len(substr)
-
-		!must have length > 0
 		if (numchars== 0) return
 		if (sub_len == 0) return
 
-		!set starting and ending indices if present
+		! Set starting and ending indices if present, otherwise search whole
+        ! string
 		if (present(start)) then
 			st = start
 		else
@@ -750,7 +859,7 @@ contains
 			lst = numchars
 		endif
 
-		!find first instance of substr within string using set st/lst indices
+		! Find first instance of substr within string using set st/lst indices
 		find = 0
 		do i = st, lst
 			if (string(i:i+sub_len-1) == substr) then
@@ -764,16 +873,20 @@ contains
 	!:.........................................................................:
 
 	logical function starts_with(string, substr)
-		!checks whether input string starts with substring
-		!Inputs:
-		!	string:       input string to check
-		!	substr:       substring to check against
-		!Outputs:
-		!	starts_with:  does the string start with substr?
+        !
+        !  Checks whether input string starts with substring
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(in)  :: string
-		character(len = *), intent(in)  :: substr
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: string ! Input string
+		character(len = *), intent(in) :: substr ! Input substring
 
+        ! Check if it's the first location
 		if (find(string, substr) == 1) then
 			starts_with = .true.
 		else
@@ -785,6 +898,15 @@ contains
 	!:.........................................................................:
 
 	logical function ends_with(string, substr)
+        !
+        !  Checks whether input string ends with substring
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
+
 		!checks whether input string ends with substring
 		!Inputs:
 		!	string:     input string to check
@@ -792,9 +914,11 @@ contains
 		!Outputs:
 		!	ends_with:  does the string start with substr?
 
-		character(len = *), intent(in)  :: string
-		character(len = *), intent(in)  :: substr
+        ! Data dictionary: calling arguments
+		character(len = *), intent(in) :: string ! Input string
+		character(len = *), intent(in) :: substr ! Input substring
 
+        ! Check if it ends with that string
 		if (find(string, substr) == (len(string) - len(substr) + 1)) then
 			ends_with = .true.
 		else
@@ -827,32 +951,39 @@ contains
 	!:.........................................................................:
 
 	subroutine compress_ws(string)
-		!compresses white space in string
-		!Inputs/Outputs:
-		!	string:  input string to change
+        !
+        !  Deletes white space in a string
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(inout) :: string
+        ! Data dictionary: calling arguments
+		character(len = *), intent(inout) :: string ! Input string
 
-		character(len = len(string))      :: tmpstring
-		character                         :: ci
-		integer                           :: i, n, numchars
+        ! Data dictionary: local variables
+		character(len = len(string)) :: tmpstring ! Temporary string
+		character                    :: ci        ! Temporary string (sub of input)
+		integer                      :: i, n      ! Looping indices
+        integer                      :: numchars  ! Length of string
 
-		!adjust left and get length of string, ignoring trailing blanks
+		! Adjust left and get length of string, ignoring trailing blanks
 		string = adjustl(string)
 		numchars = len_trim(string)
 
-		!must have some characters
+		! Must have some characters
 		if (numchars == 0) return
 
 		tmpstring = ''
 		n = 0
-
-		!loop through number of characters, checking if each individual
-		  !character and the following is whitespace
+		! Loop through number of characters, checking if each individual
+		! character and the following is whitespace
 		do i = 1, numchars - 1
 			ci = string(i:i)
-			if (verify(ci, ws) == 0 .and.                                      &
-				verify(next_char(string, i), ws) == 0) then
+			if (verify(ci, WS) == 0 .and.                                      &
+				verify(next_char(string, i), WS) == 0) then
 				cycle
 			else
 				n = n + 1
@@ -861,8 +992,8 @@ contains
 			endif
 		enddo
 
+        ! Set to new string and trim
 		tmpstring(n+1:n+1) = string(numchars:numchars)
-
 		string = trim(adjustl(tmpstring))
 
 	end subroutine compress_ws
@@ -870,43 +1001,50 @@ contains
 !:.............................................................................:
 
 	subroutine findlocs(locs, string, substr)
-		!finds locations of substring within string
-		!Inputs:
-		!	string: input string
-		!	substr: substring to find within string
-		!Outputs:
-		!	locs:   index locations within string with substring
+        !
+        !  Finds locations of substring within string
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		integer, dimension(:), allocatable, intent(out) :: locs
-		character(len = *),                 intent(in)  :: string
-		character(len = *),                 intent(in)  :: substr
+        ! Data dictionary: calling arguments
+		integer, dimension(:), allocatable, intent(out) :: locs   ! Array of location of substring
+		character(len = *),                 intent(in)  :: string ! Input string
+		character(len = *),                 intent(in)  :: substr ! Input substring
 
-		integer                                         :: counter
-		integer                                         :: pos, sub_len
-		integer                                         :: numchars
-		integer, dimension(:), allocatable              :: templocs
+        ! Data dictionary: local variables
+		integer                            :: counter  ! Looping index
+		integer                            :: pos      ! Current position in string
+        integer                            :: sub_len  ! Length of substring
+		integer                            :: numchars ! Length of input string
+		integer, dimension(:), allocatable :: templocs ! Temporary array of locations
 
+        ! Get length of string and substring
 		numchars = len(string)
 		sub_len  = len(substr)
 
-		!must find substring somewhere within string
+		! Must find substring somewhere within string
 		if (find(string, substr) == 0) then
 			allocate(locs(0))
 			return
 		endif
 
-		!allocate locs to 1 to start
+		! Allocate locs to 1 to start
 		if (.not. allocated(locs)) allocate(locs(1))
-		!find first instance of substr
+
+        ! Find first instance of substr
 		pos = find(string, substr)
 
-		!set the first value to first instance
+		! Set the first value to first instance
 		locs(1) = pos
 
-		!move forward in string by length of substring
+		! Move forward in string by length of substring
 		counter = pos + sub_len
 
-		!find all instances
+		! Now find all instances
 		do while (pos > 0)
 			pos = find(string, substr, counter)
 			if (pos > 0) then
@@ -926,18 +1064,23 @@ contains
 	!:.........................................................................:
 
 	character function next_char(string, l)
-		!gets character after l in string
-		!Inputs:
-		!	string:    input string
-		!	l:         index to get following character
-		!Outputs:
-		!	next_char:  character after l in string
+        !
+        !  Gets the character after input index (l) in string
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    06/26/14     K. Holcomb           Original Code
+        !
 
-		character(len = *), intent(in)  :: string
-		integer,            intent(in)  :: l
+        ! Data dictonary: calling arguments
+		character(len = *), intent(in) :: string ! Input string
+		integer,            intent(in) :: l      ! Index to check
 
-		integer                         :: next
+        ! Data dictionary: local variables
+		integer :: next ! Looping index
 
+        ! Check the next string
 		next = l + 1
 		if (next < len(string)) then
 			next_char = string(next:next)

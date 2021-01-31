@@ -1,88 +1,103 @@
 module Random
 
-	implicit none
-
 !*******************************************************************************
   !
   !This module contains various random number generators.
   !
 !*******************************************************************************
 
+	implicit none
 
-!variables for the climate-specific RNG
-integer   :: clim_seed = 0
-integer   :: rng_seed
-logical   :: reset_clim = .true.
+	! Data dictionary: global variables
+	integer   :: clim_seed = 0       ! Climate RNG seed
+	integer   :: rng_seed            ! Regular RNG seed
+	logical   :: reset_clim = .true. ! Reset the climate seed?
 
-private      clim_seed, rng_seed, reset_clim
+	private clim_seed, rng_seed, reset_clim
 
 contains
 
 	!:.........................................................................:
 
-	function urand(lb, ub, seed)
-		!returns a uniformly-distributed random number in the range lb to ub,
-		  !default 0.0 to 1.0
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs/Outputs:
-		!	lb:    lower bound
-		!	ub:    upper bound
-		!	seed:  random seed
-		!Outputs:
-		!	urand: uniform random number
+	real function urand(lb, ub, seed)
+		!
+		!  Returns a uniformly-distributed random number in the range (lb, ub],
+		!	default to (0.0, 1.0]
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		real                       :: urand
-		real, optional, intent(in) :: lb, ub
-		real, optional, intent(in) :: seed
-		integer                    :: iseed
-		real                       :: rnd
-		real                       :: lower, upper
+		! Data dictionary: calling arguments
+		real, optional, intent(in) :: lb   ! Upper bound
+		real, optional, intent(in) :: ub   ! Lower bound
+		real, optional, intent(in) :: seed ! Optional RNG seed
 
+		! Data dictionary: local variables
+		integer :: iseed ! Local seed
+		real    :: rnd   ! Random number
+		real    :: lower ! Local lower bound
+		real    :: upper ! Local upper bound
+
+		! Set the seed if it is present
 		if (present(seed)) then
 			iseed = int(seed)
 			call set_random_seed(iseed)
 		endif
 
+		! Set the lower bound if present, otherwise default to 0.0
 		if (present(lb)) then
 			lower = lb
 		else
 			lower = 0.0
 		endif
 
+		! Set the upper bound if present, otherwise default to 1.0
 		if (present(ub)) then
 			upper = ub
 		else
 			upper = 1.0
 		endif
 
+		! Get a random number with intrinsic
 		call random_number(rnd)
-		urand = lower + (upper - lower)*rnd
 
-		return
+		! Rescale to the correct bounds
+		urand = lower + (upper - lower)*rnd
 
 	end function urand
 
 	!:.........................................................................:
 
-	function nrand(mean, std, seed)
-		!returns a normally-distributed random number with given mean
-		  !and standard deviation, default to mean = 0.0, std = 1.0
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs/Outputs:
-		!	mean:   mean
-		!	std:    standard deviation
-		!   seed:   random seed
-		!Outputs:
-		!	nrand:  normally-distributed random numer
+	real function nrand(mean, std, seed)
+		!
+		!  Returns a normally-distributed random number with given mean and
+		!	standard deviation, default to mean = 0.0, sd = 1.0
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
+		! Data dictionary: calling arguments
+		real, optional, intent(in) :: mean ! Input mean
+		real, optional, intent(in) :: std  ! Optional standard deviation
+ 		real, optional, intent(in) :: seed ! Optional input RNG seed
 
-		real                       :: nrand
-		real, optional, intent(in) :: mean, std
-		real, optional, intent(in) :: seed
-		integer                    :: iseed
-		real                       :: mn, st
-		real                       :: x1, y1, x2, y2, w
+		! Data dictionary: local variables
+		integer :: iseed ! Local seed
+		real    :: mn    ! Local mean
+		real    :: st    ! Local standard deviation
+		real    :: x1    ! Random uniform between (-1.0, 1.0]
+		real    :: x2    ! Random uniform between (-1.0, 1.0]
+		real    :: w     ! Temporary variable
+		real    :: y1    ! Temporary variable to calculate nrand
+		real    :: y2    ! Temporary variable to calculate nrand
 
+		! Set the mean and sd if present, otherwise use defaults
 		if (present(mean)) then
 			mn = mean
 		else
@@ -95,98 +110,122 @@ contains
 			st = 1.0
 		endif
 
-		!Box-Muller polar method
-1 		continue
+		! Box-Muller polar method
+		do
+			! Set the seed if present, and generate 2 uniform random numbers
+			! between -1.0 and 1.0
+			if (present(seed)) then
+				iseed = int(seed)
+				x1 = urand(-1.0, 1.0, seed)
+				x2 = urand(-1.0, 1.0, seed)
+			else
+				x1 = urand(-1.0, 1.0)
+				x2 = urand(-1.0, 1.0)
+			endif
 
-		if (present(seed)) then
-			iseed = int(seed)
-			x1 = urand(-1.0, 1.0, seed)
-			x2 = urand(-1.0, 1.0, seed)
-		else
-			x1 = urand(-1.0, 1.0)
-			x2 = urand(-1.0, 1.0)
-		endif
+			! Calculate sum of squared values
+			! Check to make sure not 0.0 or > 1.0
+			w = x1**2 + x2**2
+			if (w /= 0.0 .and. w < 1.0) exit
+		end do
 
-		w = x1**2 + x2**2
-		if (w .eq. 0.0 .or. w .gt. 1.0) go to 1
-
-		w = sqrt((-2.0 * log( w ))/w)
+		! Calculate y1 and y2 from w and x1, x2
+		w = sqrt((-2.0*log(w))/w)
 		y1 = x1*w
 		y2 = x2*w
 
-		!pick one, adjust its mean and std
+		! Pick one, adjust its mean and std
 		nrand = y1*st + mn
-
-		return
 
 	end function nrand
 
 	!:.........................................................................:
 
-	function clim_urand(lb, ub)
-		!used in order to have a separate RNG for climate data. It is
-		  !simple-minded but decent linear congruence with a shuffle, from the
-		  !Numerical Recipes First Edition. Passes "Runs" test but probably not
-		  !DIEHARD.
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs/Outputs:
-		!	lb:         lower bound
-		!	ub:         upper bound
-		!Outputs:
-		!	clim_urand: uniform random number
+	real function clim_urand(lb, ub)
+		!
+		!  Returns a uniformly distributed random number (used for climate
+		!	data) between a lower and upper bound (default to 0.0 and 1.0).
+		!  Adapted from the Numerical Recipes First Edition
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		real                       :: clim_urand
-		real, optional, intent(in) :: lb, ub
-		real                       :: lower, upper
-		real                       :: ran1
-		real                       :: rm1, rm2
-		real, dimension(97)        :: r
-		integer, parameter         :: m1 = 259200, ia1 = 7141
-		integer, parameter         :: ic1 = 54773
-		integer, parameter         :: m2 = 134456, ia2 = 8121
-		integer, parameter         :: ic2 = 28411
-		integer, parameter         :: m3 = 243000, ia3 = 4561
-		integer, parameter         :: ic3 = 51349
-		integer                    :: ix1, ix2, ix3
-		integer                    :: j
-		logical                    :: first = .true.
+		! Data dictonary: constants
+		! Parameters for creating some randomness
+		integer, parameter :: M1 = 259200
+		integer, parameter :: M2 = 134456
+		integer, parameter :: M3 = 243000
+		integer, parameter :: IA1 = 7141
+		integer, parameter :: IA2 = 8121
+		integer, parameter :: IA3 = 4561
+		integer, parameter :: IC1 = 54773
+		integer, parameter :: IC2 = 28411
+		integer, parameter :: IC3 = 51349
+
+		! Data dictionary: calling arguments
+		real, optional, intent(in) :: lb ! Optional lower bound
+		real, optional, intent(in) :: ub ! Optional upper bound
+
+		! Data dictionary: local variables
+		real, dimension(97) :: r              ! Array of numbers to pull from
+		real                :: lower          ! Local lower bound
+		real                :: upper          ! Local upper bound
+		real                :: ran1           ! Number from r
+		real                :: rm1            ! Temp. variable
+		real                :: rm2            ! Temp. variable
+		integer             :: ix1            ! Temp. variable
+		integer             :: ix2            ! Temp. variable
+		integer             :: ix3            ! Temp. variable
+		integer             :: j              ! Indexing variable
+		logical             :: first = .true. ! First time we have called this?
 		save
 
+		! Set the lower bound if present, otherwise default to 0.0
 		if (present(lb)) then
 			lower = lb
 		else
 			lower = 0.0
 		endif
 
+		! Set the upper bound if present, otherwise default to 1.0
 		if (present(ub)) then
 			upper = ub
 		else
 			upper = 1.0
 		endif
 
-		rm1 = 1.0/m1
-		rm2 = 1.0/m2
+		! Generate two numbers from division of large integers
+		rm1 = 1.0/M1
+		rm2 = 1.0/M1
 
 		if (first .or. reset_clim) then
-			ix1 = mod(abs(ic1 - clim_seed), m1)
-			ix1 = mod(ia1*ix1 + ic1, m1)
-			ix2 = mod(ix1, m2)
-			ix1 = mod(ia1*ix1 + ic1, m1)
-			ix3 = mod(ix1, m3)
+
+			! First time we are calling this
+			! Generate some random numbers by doing some integer math
+			ix1 = mod(abs(IC1 - clim_seed), M1)
+			ix1 = mod(IA1*ix1 + IC1, m1)
+			ix2 = mod(ix1, M2)
+			ix1 = mod(IA1*ix1 + IC1, M1)
+			ix3 = mod(ix1, M3)
 			do j = 1, 97
-				ix1 = mod(ia1*ix1 + ic1, m1)
-				ix2 = mod(ia2*ix2 + ic2, m2)
+				ix1 = mod(IA1*ix1 + IC1, M1)
+				ix2 = mod(IA2*ix2 + IC2, M2)
 				r(j) = (real(ix1) + real(ix2)*rm2)*rm1
 			enddo
 			first = .false.
-		  reset_clim = .false.
+		    reset_clim = .false.
 		endif
 
-		ix1 = mod(ia1*ix1 + ic1, m1)
-		ix2 = mod(ia2*ix2 + ic2, m2)
-		ix3 = mod(ia3*ix3 + ic3, m3)
+		! Do some more math - we will keep doing just this on future calls
+		ix1 = mod(IA1*ix1 + IC1, M1)
+		ix2 = mod(IA2*ix2 + IC2, M2)
+		ix3 = mod(IA3*ix3 + IC3, M3)
 
-		j = 1 + (97*ix3)/m3
+		! Check to make sure j is in the correct range
+		j = 1 + (97*ix3)/M3
 		if (j .gt. 97 .or. j .lt. 1) then
 			j = 97
 			write(*, *) 'Error in climate RNG'
@@ -195,29 +234,39 @@ contains
 			r(j) = (real(ix1) + real(ix2)*rm2)*rm1
 		endif
 
+		! Rescale to correct bounds
 		clim_urand = lower + (upper - lower)*ran1
-
-		return
 
 	end function clim_urand
 
 	!:.........................................................................:
 
-	function clim_nrand(mean, std)
-		!returns a normally-distributed random number with given mean and standard
-		  !deviation, default is mean = 0.0 and std = 1.0
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs/Outputs:
-		!	mean:       mean
-		!	std:        standard deviation
-		!Outputs:
-		!	clim_nrand: normally distributed random number
+	real function clim_nrand(mean, std)
+		!
+		!  Returns a normally distributed random number (used for climate
+		!	data) with a given mean and standard deviation
+		!	(default to mean = 0.0 and sd = 1.0)
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		real           :: clim_nrand
-		real, optional :: mean, std
-		real           :: mn, st
-		real           :: x1, y1, x2, y2, w
+		! Data dictionary: calling arguments
+		real, optional :: mean ! Input mean
+		real, optional :: std  ! Input standard deviation
 
+		! Data dictionary: local variables
+		real :: mn ! Local mean
+		real :: st ! Local standard deviation
+		real :: x1 ! Random uniform between (-1.0, 1.0]
+		real :: x2 ! Random uniform between (-1.0, 1.0]
+		real :: w  ! Temporary variable
+		real :: y1 ! Temporary variable to calculate nrand
+		real :: y2 ! Temporary variable to calculate nrand
+
+		! Set mean and sd if present, otherwise use defaults
 		if (present(mean)) then
 			mn = mean
 		else
@@ -230,95 +279,110 @@ contains
 			st = 1.0
 		endif
 
-		!Box-Muller polar method
-1 		continue
+		! Box-Muller polar method
+		do
+			! Generate 2 uniform random numbers between -1.0 and 1.0
+			x1 = clim_urand(-1.0, 1.0)
+			x2 = clim_urand(-1.0, 1.0)
 
-		x1 = clim_urand(-1.0, 1.0)
-		x2 = clim_urand(-1.0, 1.0)
+			! Check value of w and exit if possible
+			w = x1**2 + x2**2
+			if (w /= 0.0 .and. w < 1.0) exit
+		end do
 
-		w = x1**2 + x2**2
-		if (w .eq. 0.0 .or. w .gt. 1.0) go to 1
-
-		w = sqrt((-2.0 * log(w))/w)
+		! Calculate y1 and y2 from w, x1, and x2
+		w = sqrt((-2.0*log(w))/w)
 		y1 = x1*w
 		y2 = x2*w
 
-		!pick one, adjust its mean and std
+		! Pick one, adjust its mean and std
 		clim_nrand = y1*st + mn
-
-		return
 
 	end function clim_nrand
 
 	!:.........................................................................:
 
 	subroutine set_site_rng_seed(fixed_seed, seed)
-		!selets the site's random number generator seed. Fixed_seed is for
-		  !debugging. If true, set the seed to be the default seed each time
-		  !it is called. If false, get a random seed (or optionally use a
-		  !specified seed) on the first call
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs/Outputs:
-		!	fixed_seed:  should a fixed seed be used (.true./.false.)
-		!	siteID:      unique site iD
-		!	seed:        random seed
+		!
+		!  Sets the site's random number generator seed. Fixed_seed is for
+		!  debugging. If true, we set the seed to be the default seed each time
+		!  it is called - this allows for duplication of runs.
+		!  If false - we get a random seed, or optionally use an input seed
+		!  on the first call.
+		!  This also means we can run the sites in any order for serial runs
+		!  with fixed_seed on.
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		logical,        intent(in) :: fixed_seed
-		real, optional, intent(in) :: seed
-		integer                    :: idate(8)
-		integer                    :: iseed
-		integer, parameter         :: default_seed = 2345678
-		logical                    :: first = .true.
-		real                       :: rnd
+		! Data dictionary: constants
+		integer, parameter :: DEFAULT_SEED = 2345678 ! Default RNG seed
 
-		!If fixed_seed is true, reset the seed for each site. This is done
-		  !because if we ever parallelize the code, the only way to ensure
-		  !reproducibility is to start each site from the same state. It's not
-		  !so important for serial runs but it doesn't take all that much time.
-		  !Even for serial runs, however, it means we can run the sites in any
-		  !order.
+		! Data dictionary: calling arguments
+		logical,        intent(in) :: fixed_seed ! Fixed_seed true?
+		real, optional, intent(in) :: seed       ! Optional RNG seed
+
+		! Data dictionary: local variables
+		integer :: idate(8)       ! Array of outputs from date_and_time
+		integer :: iseed          ! Local seed
+		logical :: first = .true. ! First time we are calling this?
+
+		save
 
 		if (.not. fixed_seed) then
+
+			! We are not using a fixed seed - need to generate one on first call
 			if (first) then
+
+				! First time we are calling - need to generate a seed
+
 				if (.not. present(seed)) then
-					!create seed value
-					!get date and time values
+					! Create seed value
+					! Get date and time values
 					call date_and_time(values = idate)
 
-					!get a random seed
+					! Get a random seed
 					call get_random_seed(iseed)
 
-					!calculate actual seed value
+					! Calculate actual seed value
 					if (iseed .ne. 0) then
-						iseed = iseed * (idate(8)) !idate(8) = milliseconds
+						iseed = iseed*idate(8) ! idate(8) = milliseconds
 					else
-						iseed = default_seed * (idate(8))
+						! If it's 0 somehow, use the default seed
+						iseed = DEFAULT_SEED*idate(8)
 					endif
-
 				else
-					!iseed is equal to input seed
+					! use the input seed
 					iseed = seed
 				endif
+
+				! Set first to false, and set rng_seed to generated seed
 				first = .false.
 				rng_seed = iseed
 
-				!set the random seed to the calculated or input seed for any
-				  !future random number calls
+				! Set the random seed to the calculated or input seed for any
+			    ! future random number calls
 				call set_random_seed(rng_seed)
 			endif
 		else
-			!fixed seed - use same seed for all sites. Seed is set to default
-		      !seeds unless seed is present in call
+			! fixed seed - use same seed for all sites. Seed is set to default
+	        ! seeds unless seed is present in call
 			if (.not. present(seed)) then
-				iseed = default_seed
+				! Use default seed
+				iseed = DEFAULT_SEED
 			else
+				! Use input seed
 				iseed = seed
 			endif
+
+			! Set the seed
 			rng_seed = iseed
 
-			!set the random number seed and call a random number
+			! Set the random number seed
 			call set_random_seed(rng_seed)
-			call random_number(rnd)
 
 		endif
 
@@ -327,21 +391,30 @@ contains
 	!:.........................................................................:
 
 	subroutine get_random_seed(seed)
-		!gets a random seed
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Outputs:
-		!	seed:  random seed
+		!
+		!  Gets an RGN seed
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		integer, intent(out)               :: seed
-		integer                            :: isize
-		integer, dimension(:), allocatable :: iseed
+		! Data dictionary: calling arguments
+		integer, intent(out) :: seed ! RNG seed
 
-		!get random seed size and allocate
+		! Data dictionary: local variables
+		integer, dimension(:), allocatable :: iseed ! Array of RNG seeds
+		integer                            :: isize ! Max size of seed array
+
+
+		! Get max size of random seed
 		call random_seed(size = isize)
+
+		! Allocate iseed to this size
 		if (.not. allocated(iseed)) allocate(iseed(isize))
 
-		!get a random seed of size isize
-		iseed = seed
+		! Get a random seed
 		call random_seed(get = iseed)
 		seed = iseed(1)
 
@@ -350,40 +423,63 @@ contains
 	!:.........................................................................:
 
 	subroutine set_random_seed(seed)
-		!sets the random seed for random_number calls
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs
-		!	seed:  random seed
+		!
+		!  Sets the random seed for random_number calls
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		integer, intent(in)                :: seed
-		integer                            :: isize
-		integer, dimension(:), allocatable :: iseed
+		! Data dictionary: calling arguments
+		integer, intent(in) :: seed ! Input RNG seed
 
-		!get size of random seed
+		! Data dictionary: local variables
+		integer, dimension(:), allocatable :: iseed ! Array of RNG seeds
+		integer                            :: isize ! Max size of RNG seed array
+
+		! Get size of random seed array and allocate
 		call random_seed(size = isize)
 		if (.not. allocated(iseed)) allocate(iseed(isize))
 
-		!put the seed as the random seed for any future random number calls
+		! Put the seed as the random seed for any future random number calls
 		iseed = seed
 		call random_seed(put = iseed)
 
 	end subroutine set_random_seed
 
 	!:.........................................................................:
+
 	subroutine shuffle(a)
-		!shuffles the array a
-		!Author: Katherine Holcomb 2012, v. 1.0
-		!Inputs:
-		!	a: array to shuffle
+		!
+		!  Shuffles an input integer array
+		!
+		!  Record of revisions:
+		!      Date       Programmer          Description of change
+		!      ====       ==========          =====================
+		!    01/01/12     K. Holcomb           Original Code
+		!
 
-		integer, dimension(:), intent(inout) :: a
-		integer                              :: i
-		integer                              :: randpos,tempval
-		real                                 :: rnd
+		! Data dictionary: calling arguments
+		integer, dimension(:), intent(inout) :: a ! Array to shuffle
 
+		! Data dictionary: local variables
+		integer :: i       ! Looping index
+		integer :: randpos ! Random location in array
+		integer :: tempval ! Temporary variable for swapping
+		real    :: rnd     ! Random number
+
+		! Loop backwards through array
 		do i = size(a), 1, -1
+
+			! Call random number
 			call random_number(rnd)
+
+			! Get a random position to swap with
 			randpos = int(rnd*i) + 1
+
+			! Swap values
 			tempval = a(randpos)
 			a(randpos) = a(i)
 			a(i) = tempval

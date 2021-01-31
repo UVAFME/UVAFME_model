@@ -1,21 +1,27 @@
 !*******************************************************************************
   !
-  !Include file for csv_file.f90:
-  !  contains the body of the two-dimensional version of the
+  ! Include file for csv_file.f90:
+  !  Contains the body of the two-dimensional version of the
   !  writing routines
   !
-  !Id: csv_file_2d.f90,v 1.2 2006/03/26 19:03:53
-  !Author: Arjen Markus
+  !  Record of revisions:
   !
+  !       Date            Programmer                   Change
+  !    ==========       ==============            =================
+  !     03/26/06         Arjen Markus              Original Code
 !*******************************************************************************
 
-    integer, intent(in)  :: lun
+    ! Data dictionary: calling arguments
+    integer, intent(in)  :: lun ! Unit number of csv file 
 
-    logical              :: adv
-    integer              :: i
+    ! Data dictionary: local variables
+    logical :: adv ! Advance - yes or no?
+    integer :: i   ! Looping index
 
+    ! We are advancing here
     adv = .true.
 
+    ! Write line
     do i = 1, size(array, 2)
 		  call csv_write(lun, array(:, i), adv)
     enddo
