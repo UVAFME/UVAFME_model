@@ -88,7 +88,7 @@ contains
 			allocate(self%deadtrees(maxcells*maxcells))
 			allocate(self%cells(maxcells, maxcells))
 		else
-			stop "Must allow at least a few trees"
+			call fatal_error("Must allow at least a few trees", 10)
 		endif
 
 		if (maxheight .ne. 0) then
@@ -96,7 +96,7 @@ contains
 			allocate(self%dec_light(maxheight))
 			allocate(self%cla(maxheight))
 		else
-			stop "Must have a nonzero maximum height"
+			call fatal_error("Must have a nonzero maximum height", 10)
 		endif
 
 		!for now the possible species in each plot is assumed to be all in

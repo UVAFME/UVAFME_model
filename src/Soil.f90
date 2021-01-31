@@ -882,7 +882,7 @@ implicit none
 	!:.........................................................................:
 
 	subroutine moist(soil, ta, rain, pot_ev_day, nlai, slope, amlt, xmlt,      &
-					xfrz, tdd, k, wd, aet, aow0_ScaledByMax, aow0_ScaledByMin, &
+					xfrz, tdd, k, aet, aow0_ScaledByMax, aow0_ScaledByMin,     &
 					saw0_ScaledByFC, saw0_ScaledByWP, saw0_ScaledBySAT)
 		!calculates daily soil moisture dynamics
 		!Author: Adrianna Foster 2018 v. 1.0
@@ -911,7 +911,7 @@ implicit none
 		real, dimension(12, 2), intent(in)    :: tdd
 		real,                   intent(in)    :: ta, rain, pot_ev_day
 		real,                   intent(in)    :: amlt, xmlt, xfrz, nlai
-		real,                   intent(in)    :: slope, wd
+		real,                   intent(in)    :: slope
 		integer,                intent(in)    :: k
 		real,                   intent(out)   :: aet
 		real,                   intent(out)   :: aow0_ScaledByMax
@@ -993,23 +993,7 @@ implicit none
 		zh(2) = Ad
 		aet_loss = 0.0
 
-		pflood = wd*0.01
-		rflood = urand()
-
-		!if (rflood .le. pflood) then
-
-			!precip = (rain/100.0)*200.0*wd
-		!else
-			!calculate this day's water input (precip, m)
-			!precip = rain/100.0 + wd*0.25
-		!endif
-
-		if (wd .gt. 0.0) then
-			precip = rain/100 + wd*0.20
-		else
-
-			precip = rain/100.0
-		endif
+		precip = rain/100.0
 
 		!calculate daily PET (m)
 		pet = pot_ev_day/100.0
@@ -1402,7 +1386,7 @@ implicit none
 		else
 			soil%litter(18) = xx
 		end if
-		
+
 		!convert to tonnes/ha from kg/plot
 		soil%litter(18) = soil%litter(18)/plotsize/0.0001/1000
 

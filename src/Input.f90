@@ -103,21 +103,21 @@ contains
 				!check for linear cc inputs to make sure they make sense, if so,
 					!create yearly changes in temperature/precipitation
 				if (gcm_duration == 0) then
-					stop "Inconsistent input for climate change: 0 years duration"
+                    call fatal_error("Inconsistent input for climate change: 0 years duration", 8)
 				else if (incr_tmin_by == 0.0 .and.                             &
 					decr_tmax_by == 0.0 .and.                                  &
 					decr_tmin_by == 0.0 .and.                                  &
 					decr_tmax_by == 0.0 .and.                                  &
 					incr_precip_by == 0.0 .and.                                &
 					decr_precip_by == 0.0) then
-					stop "Inconsistent climate change: no temp or precip changes"
+					call fatal_error("Inconsistent climate change: no temp or precip changes", 8)
 
 				else if (incr_or_decr_temp == 'incr' .and.                     &
 					incr_or_decr_prcp == 'incr') then
 
 					if (incr_tmin_by <= 0.0 .and. incr_tmax_by <= 0.0          &
 							.and. incr_precip_by <= 0.0) then
-						stop "Inconsistent climate change: bad incr input"
+						call fatal_error("Inconsistent climate change: bad incr input", 8)
 					else
 						tmin_change = incr_tmin_by/(gcm_duration + 1)
 						tmax_change = incr_tmax_by/(gcm_duration + 1)
@@ -129,7 +129,7 @@ contains
 
 					if (decr_tmin_by == 0.0 .and. decr_tmax_by == 0.0          &
 							.and. decr_precip_by == 0.0) then
-						stop "Inconsistent climate change: bad decr data"
+						call fatal_error("Inconsistent climate change: bad decr data", 8)
 					else
 
 						!input for decr should be positive, assume user made
@@ -156,7 +156,7 @@ contains
 						incr_or_decr_prcp == 'decr') then
 					if (incr_tmin_by <= 0.0 .and. incr_tmax_by <= 0.0          &
 							.and. decr_precip_by == 0.0) then
-						stop "Bad incr or decr data"
+						call fatal_error("Bad incr or decr data", 8)
 					else
 						if (decr_precip_by < 0.0) then
 							write(*,*) "Assuming decrease intended"
@@ -171,7 +171,7 @@ contains
 						incr_or_decr_prcp == 'incr') then
 					if (decr_tmin_by == 0.0 .and. decr_tmax_by == 0.0          &
 							.and. incr_precip_by == 0.0) then
-						stop "Inconsistent climate change data"
+						call fatal_error("Inconsistent climate change data", 8)
 					else
 						if (decr_tmax_by < 0.0) then
 							write(*,*) "Assuming decrease intended"
@@ -199,7 +199,7 @@ contains
 				!we will read in a new array for the tmin, tmax, and precip data
 
 				if (gcm_duration == 0) then
-					stop "Inconsistent input for climate change: 0 years duration"
+					call fatal_error("Inconsistent input for climate change: 0 years duration", 8)
 				else
 					!we start counting at 0
 					end_gcm = start_gcm + gcm_duration - 1
@@ -255,7 +255,7 @@ contains
 
 		!check if any are invalid
 		if (any(litter_pars .eq. rnvalid)) then
-			write(logf, *) 'Error in litter parameters file, rnvalid'
+			call fatal_error('Error in litter parameters file, rnvalid', 10)
 		endif
 
 		!close file
@@ -286,7 +286,7 @@ contains
 		!count rows in sitelist file to get number of sites to run
 		numsites = count_records(slist, 1)
 		if (numsites <= 0) then
-			call fatal_error("Error in site list file")
+			call fatal_error("Error in site list file", 9)
 		endif
 
 		!read header to obtain the number of site variables to modify
@@ -660,8 +660,7 @@ contains
 	!:.........................................................................:
 
 	subroutine read_site(site_id, sitename, siteregion, lat, long, elevation,  &
-                        slope, aspect, asat, afc, itxt, fprob, wprob, gcm_year, &
-                        wd)
+                        slope, aspect, asat, afc, itxt, fprob, wprob, gcm_year)
         !reads in site and soil input data for site
         !Author: Katherine Holcomb, 2012 v. 1.0
 		!Inputs/Outputs:
@@ -686,12 +685,11 @@ contains
 		real,                      intent(out)   :: lat, long
 		real,                      intent(out)   :: elevation, slope, aspect
 		real,                      intent(out)   :: asat, afc, itxt
-		real,                      intent(out)   :: fprob, wprob, gcm_year, wd
+		real,                      intent(out)   :: fprob, wprob, gcm_year
 
 		integer                                  :: siteid
 		character(MAX_LINE)                      :: header
 		integer                                  :: ios
-		real                                     :: wd1
 
 		siteid = invalid
 
@@ -701,7 +699,7 @@ contains
 		do
 			read(sfile, *, iostat = ios, end = 10) siteid, lat, long,          &
 				sitename, siteregion, elevation, slope, aspect, asat, afc,     &
-				itxt, fprob, wprob, gcm_year, wd1, wd
+				itxt, fprob, wprob, gcm_year
 
 			if (site_id .eq. siteid) then
 				exit
@@ -769,7 +767,7 @@ contains
 		!the species file has a header line
 		num_all_species = count_records(splist, 1)
 		if (num_all_species < 0) then
-			call fatal_error('Error in species-list file')
+			call fatal_error('Error in species-list file', 9)
 		endif
 
 		allocate(species_data(num_all_species))
@@ -778,8 +776,7 @@ contains
 		!read and discard the first line
 		read(splist, '(a500)', iostat = ios) line
 		if (ios .ne. 0) then
-			write(*,*) 'Unable to read the specieslist file'
-			stop
+			call fatal_error('Unable to read the specieslist file', 9)
 		endif
 
 		lc = 0

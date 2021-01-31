@@ -55,7 +55,6 @@ module Site
 		real                                           :: deg_days
 		real                                           :: fire_prob
 		real                                           :: wind_prob
-		real                                           :: wd_ind
 		real                                           :: alff, pmax
         real                                           :: pc_germ
 	end type SiteData
@@ -104,7 +103,7 @@ contains
 		real                                             :: fire_prob
 		real                                             :: wind_prob
 		real                                             :: a_sat
-		real                                             :: a_fc, wd
+		real                                             :: a_fc
 		real                                             :: o_depth, itxt
 		integer                                          :: i_text
 
@@ -114,7 +113,7 @@ contains
 
 		call read_site(self%site_id, sitename, siteregion, lat, long,          &
 						elevation, slope, aspect, a_sat, a_fc, itxt,           &
-						fire_prob, wind_prob, gcm_year, wd)
+						fire_prob, wind_prob, gcm_year)
 
 		self%site_name = sitename
 		self%region    = siteregion
@@ -127,7 +126,6 @@ contains
 		self%wind_prob = wind_prob
 		self%gcm_year = int(gcm_year)
 		i_text = int(itxt)
-		self%wd_ind = wd
 
 		!adjust according to global parameters set by user
 		altitude = site_vals(3)

@@ -11,14 +11,8 @@ module FileUtils
   !
 !*******************************************************************************
 
-  !set global parameters related to operating system
-#ifdef PC
-  integer, parameter   :: MAX_PATH = 260
-  character(len = 1)   :: separator = '\'
-#else
   integer, parameter   :: MAX_PATH = 256
   character(len = 1)   :: separator = '/'
-#endif
 
   !names of directories for input/output
   character(len = MAX_PATH) :: fqcwd
@@ -65,8 +59,8 @@ contains
 	!:.........................................................................:
 
 	function unit_number()
-		!generates a unit number, to be used in opening files. 
-		!The first time the function is called, it returns base_unit (10), this 
+		!generates a unit number, to be used in opening files.
+		!The first time the function is called, it returns base_unit (10), this
 		 !should be file_list.txt file, then increments by 1
 		!Outputs:
 		!	unit_number:  unit number of file
@@ -137,7 +131,7 @@ contains
 			enddo
 
 			if (any(farray > 127)) then
-				call fatal_error("Invalid filename")
+				call fatal_error("Invalid filename", 9)
 			endif
 
 		endif
@@ -168,7 +162,7 @@ contains
 	!:.........................................................................:
 
 	function count_records(funit, nheaders)
-		!counts the number of rows in a file not including the first nheaders 
+		!counts the number of rows in a file not including the first nheaders
 		  !rows.
 		!Author: Katherine Holcomb, 2012 v. 1.0
 		!Inputs:
@@ -191,7 +185,7 @@ contains
 				!success, increment counter
 				lpcount = lpcount + 1
 			 else
-				call fatal_error("Unable to read file")
+				call fatal_error("Unable to read file", 9)
 			 endif
 		 end do
 
@@ -299,25 +293,40 @@ contains
 
 		 character(len = *), intent(in)  :: message
 
-		 write(*, *) message
+		 write(logf, *) message
 
 	end subroutine warning
 
 	!:.........................................................................:
 
-	subroutine fatal_error(message)
+	subroutine fatal_error(message, error_code)
 		!stops the program and prints error message to screen
 		!Author: Katherine Holcomb, 2012 v. 1.0
 		!Inputs:
 		!   message:  message to print
+        !   error:    error code to use
+        !       8: error with climate change information
+        !       9: I/O error
+        !      10: error with input data/parameters
 		!Result:
-		!	the message is printed to the screen and the program is stopped
+		!	the message is printed to the screen and the program is stopped with
+        !   specific error code
 
-		 character(len = *), intent(in)  :: message
+		character(len = *), intent(in)  :: message
+        integer,            intent(in)  :: error_code
 
-		 write(*, *) message
+		write(logf, *) message
 
-		 stop
+       if (error_code == 8) then
+           error stop 8
+       else if (error_code == 9) then
+           error stop 9
+       else if (error_code == 10) then
+           error stop 10
+       end if
+
+
+
 
 	end subroutine fatal_error
 

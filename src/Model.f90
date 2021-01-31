@@ -392,7 +392,7 @@ contains
  				!calculate soil water dynamics for the day
  				call moist(site%plots(ip)%soil, daytemp(j), dayprecip(j),      &
 					pot_ev_day(j), site%leaf_area_ind, site%slope, amlt, xmlt, &
-					xfrz, tdd, m, site%wd_ind, act_ev_day, aow0_ScaledByMax,   &
+					xfrz, tdd, m, act_ev_day, aow0_ScaledByMax,                &
 					aow0_ScaledByMin, saw0_ScaledByFC, saw0_ScaledByWP,        &
 					saw0_ScaledBySAT)
 

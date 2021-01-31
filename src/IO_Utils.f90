@@ -133,7 +133,7 @@ contains
 		call build_pathname(slistdir, filename,pathname)
 		slist = open_file(pathname, 'r')
 		if (slist .eq. invalid) then
-			call fatal_error('Unable to find site list file.')
+			call fatal_error('Unable to find site list file.', 9)
 		endif
 
 		!species attributes file
@@ -141,7 +141,7 @@ contains
 		call build_pathname(inputdir, filename, pathname)
 		splist = open_file(pathname, 'r')
 		if (splist .eq. invalid) then
-			call fatal_error('Unable to find species-list file.')
+			call fatal_error('Unable to find species-list file.', 9)
 		endif
 
 		!site file
@@ -149,11 +149,11 @@ contains
 		call build_pathname(sitedir, filename, pathname)
 		sfile = open_file(pathname, 'r')
 		if (sfile .eq. invalid) then
-			call fatal_error('Unable to find site data file.')
+			call fatal_error('Unable to find site data file.', 9)
 		endif
 		!the site file has a header line
 		if (count_records(sfile, 1) <=0 ) then
-			call fatal_error("Error in site data file")
+			call fatal_error("Error in site data file", 9)
 		endif
 
 		!climate file
@@ -161,10 +161,10 @@ contains
 		call build_pathname(climatedir, filename, pathname)
 		cfile = open_file(pathname, 'r')
 		if (cfile .eq. invalid) then
-			call fatal_error('Unable to find climate file.')
+			call fatal_error('Unable to find climate file.', 9)
 		endif
 		if ( count_records(cfile, 1) <=0 ) then
-			call fatal_error("Error in climate data file")
+			call fatal_error("Error in climate data file", 9)
 		endif
 
 		!extra climate file (cld)
@@ -172,10 +172,10 @@ contains
 		call build_pathname(climatedir, filename, pathname)
 		cexfile = open_file(pathname, 'r')
 		if (cexfile .eq. invalid) then
-			call fatal_error('Unable to find climte file')
+			call fatal_error('Unable to find climte file', 9)
 		end if
 		if (count_records(cexfile, 1) <= 0) then
-			call fatal_error("Error in extra climate data file")
+			call fatal_error("Error in extra climate data file", 9)
 		end if
 
 		!litter parameters
@@ -183,10 +183,10 @@ contains
 		call build_pathname(sitedir, filename, pathname)
 		litterfile = open_file(pathname, 'r')
 		if (litterfile .eq. invalid) then
-			call fatal_error('Unable to find litter parameter file')
+			call fatal_error('Unable to find litter parameter file', 9)
 		end if
 		if (count_records(litterfile, 1) <= 0) then
-			call fatal_error("Error in litter parameter file")
+			call fatal_error("Error in litter parameter file", 9)
 		end if
 
 		!climate standard-deviation file
@@ -542,12 +542,18 @@ contains
 		call csv_write(plotvals, 'Loreys_height_sd', .false.)
 		call csv_write(plotvals, 'Max_height', .false.)
 		call csv_write(plotvals, 'Max_height_sd', .false.)
-		call csv_write(plotvals, 'Total_plot_biomc', .false.)
-		call csv_write(plotvals, 'Total_plot_biomc_sd', .false.)
-		call csv_write(plotvals, 'Total_basal_area', .false.)
-		call csv_write(plotvals, 'Total_basal_area_sd', .false.)
-		call csv_write(plotvals, 'Total_stems', .false.)
-		call csv_write(plotvals, 'Total_stems_sd', .false.)
+		call csv_write(plotvals, 'total_biomC', .false.)
+		call csv_write(plotvals, 'total_biomc_sd', .false.)
+		call csv_write(plotvals, 'basal_area', .false.)
+		call csv_write(plotvals, 'basal_area_sd', .false.)
+		call csv_write(plotvals, 'total_stems', .false.)
+		call csv_write(plotvals, 'total_stems_sd', .false.)
+        call csv_write(plotvals, 'small_stems', .false.)
+        call csv_write(plotvals, 'small_stems_sd', .false.)
+        call csv_write(plotvals, 'med_stems', .false.)
+        call csv_write(plotvals, 'med_stems_sd', .false.)
+        call csv_write(plotvals, 'lg_stems', .false.)
+        call csv_write(plotvals, 'lg_stems_sd', .false.)
 		call csv_write(plotvals, 'Stand_age', .false.)
 		call csv_write(plotvals, 'Stand_age_sd', .false.)
 		call csv_write(plotvals, 'Weighted_age', .false.)

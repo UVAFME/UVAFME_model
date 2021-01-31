@@ -49,8 +49,8 @@ contains
 		real, dimension(:, :), allocatable :: tree_basal_area, tree_age
 		real, dimension(site%numplots)     :: LH, basal_ar, WA
 		real, dimension(site%numplots)     :: plbiomc, stems, plstandage
-		real, dimension(site%numplots)     :: plmaxheight
-		real, dimension(site%numplots)     :: n_1, n_2, n_3
+		real, dimension(site%numplots)     :: plmaxheight, sm_stems, med_stems
+		real, dimension(site%numplots)     :: n_1, n_2, n_3, lg_stems
 		real, dimension(site%numplots, 6)  :: envresp_1, envresp_2
 		real, dimension(site%numplots, 6)  :: envresp_3
 		real, dimension(site%numplots, 6)  :: scounts_1, scounts_2
@@ -72,6 +72,9 @@ contains
 		real                               :: Maxheight, Maxheight_std
 		real                               :: Avg_age, Avg_age_std
 		real                               :: WA_mean, WA_std
+        real                               :: lg_stems_mn, lg_stems_std
+        real                               :: sm_stems_mn, sm_stems_std
+        real                               :: med_stems_mn, med_stems_std
 	    integer                            :: ip, it, m, stress
 
 		!for converting to per ha
@@ -106,6 +109,9 @@ contains
 		n_1 = 0.0
 		n_2 = 0.0
 		n_3 = 0.0
+        lg_stems = 0.0
+        sm_stems = 0.0
+        med_stems = 0.0
 
 		!bin LAI into 5-m sections
         site_lai(1) = sum(site%lai_array(1:5))
@@ -125,6 +131,15 @@ contains
 		do ip = 1, site%numplots
 
 			do it = 1, site%plots(ip)%numtrees
+
+                if (site%plots(ip)%trees(it)%diam_bht .le. 5.0) then
+                    sm_stems(ip) = sm_stems(ip) + 1.0
+                else if (site%plots(ip)%trees(it)%diam_bht .gt. 5.0 .and.      &
+                    site%plots(ip)%trees(it)%diam_bht .le. 20.0) then
+                    med_stems(ip) = med_stems(ip) + 1.0
+                else if (site%plots(ip)%trees(it)%diam_bht .gt. 20.0) then
+                    lg_stems(ip) = lg_stems(ip) + 1.0
+                end if
 
 				!grab individual tree height (m)
 				tree_ht(ip, it) = site%plots(ip)%trees(it)%forska_ht
@@ -305,6 +320,9 @@ contains
 		call stddev(plmaxheight, Maxheight, Maxheight_std, rnvalid)
 		call stddev(plstandage, Avg_age, Avg_age_std, rnvalid)
 		call stddev(WA, WA_mean, WA_std, rnvalid)
+        call stddev(lg_stems, lg_stems_mn, lg_stems_std, rnvalid)
+        call stddev(med_stems, med_stems_mn, med_stems_std, rnvalid)
+        call stddev(sm_stems, sm_stems_mn, sm_stems_std, rnvalid)
 
 		do m = 1, 6
 			call stddev(envresp_1(:, m), envresp_1mn(m), envresp_1sd(m),       &
@@ -330,6 +348,12 @@ contains
 		Totalbasal_std = Totalbasal_std/plotsize*hec_to_m2 !cm2/ha
 		Totalstems = Totalstems*plotscale !converted to total stems/ha
 		Totalstems_std = Totalstems*plotscale !converted to stems/ha
+        lg_stems_mn = lg_stems_mn*plotscale !converted to total stems/ha
+        lg_stems_std = lg_stems_std*plotscale !converted to stems/ha
+        med_stems_mn = med_stems_mn*plotscale !converted to total stems/ha
+        med_stems_std = med_stems_std*plotscale !converted to stems/ha
+        sm_stems_mn = sm_stems_mn*plotscale !converted to total stems/ha
+        sm_stems_std = sm_stems_std*plotscale !converted to stems/ha
 
 		!write to csv
 		call csv_write(plotvals, site%site_id, .false.)
@@ -389,6 +413,12 @@ contains
 		call csv_write(plotvals, Totalbasal_std, .false.)
 		call csv_write(plotvals, Totalstems, .false.)
 		call csv_write(plotvals, Totalstems_std, .false.)
+        call csv_write(plotvals, sm_stems_mn, .false.)
+        call csv_write(plotvals, sm_stems_std, .false.)
+        call csv_write(plotvals, med_stems_mn, .false.)
+        call csv_write(plotvals, med_stems_std, .false.)
+        call csv_write(plotvals, lg_stems_mn, .false.)
+        call csv_write(plotvals, lg_stems_std, .false.)
 		call csv_write(plotvals, Avg_age, .false.)
 		call csv_write(plotvals, Avg_age_std, .false.)
 		call csv_write(plotvals, WA_mean, .false.)
