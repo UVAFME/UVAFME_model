@@ -1,0 +1,10 @@
+&filenames
+input_directory='input_data'
+output_directory='output_data'
+climate_directory='input_data'
+site_directory='input_data'
+sitelist_directory='input_data'
+GCM_directory='input_data'
+rt_directory='input_data'
+speclist_directory='input_data'
+/

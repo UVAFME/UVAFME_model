@@ -119,12 +119,12 @@ program UVAFME
         call set_site_rng_seed(fixed_seed)
 
  		! Initialize current site
- 		call initialize_site(current_site, all_site_vals(sndx, :),         &
+ 		call initialize_site(current_site, all_site_vals(sndx, :),            &
             species_data, species_ids, sndx)
 
         ! Make sure the site exists and has valid climate data
 		if (current_site%site_id == INVALID) then
- 			write(*, *) '       No valid site or climate data for site ',  &
+ 			write(*, *) '       No valid site or climate data for site ',      &
 				current_site%site_name
  			write(*, *) '            Skipping site ', current_site%site_name
  			write(*, *) '                          '
@@ -136,7 +136,7 @@ program UVAFME
 
  		! Also skip this site if no species are present
 		if ( size(current_site%species) .eq. 0 )  then
-			write(*, *) '              No species present in site ',       &
+			write(*, *) '              No species present in site ',           &
 				current_site%site_id
 			write(*, *) '            Skipping site ', current_site%site_name
  			write(*, *) '             '
@@ -150,7 +150,7 @@ program UVAFME
  		call showProgress(current_site)
 
  		! Run the model
- 		do year = 0, current_site%gcm_year
+ 		do year = 0, numyears
 
  			! Calculate current weather/site variables for the year
  			call BioGeoClimate(current_site, year)
@@ -170,20 +170,32 @@ program UVAFME
             call Renewal(current_site, year)
 
  			! Print output
- 			if (mod(year, year_print_interval) == 0 .or.                   &
-                year == current_site%gcm_year) then
+ 			if (mod(year, year_print_interval) == 0 .or. year == numyears) then
 
  				! Across-species attributes
  				call total_plot_values(current_site, year)
 
                 ! Genus-and species-level attributes
-                call write_genus_or_species_data(current_site,             &
-                    species_present, year, SPECFIELD,                      &
+                call write_genus_or_species_data(current_site,                 &
+                    species_present, year, SPECFIELD,                          &
                     species_present%numspecies, biom_by_s, pl_biom_by_s)
 
-                call write_genus_or_species_data(current_site,             &
-                    species_present, year, GENFIELD,                       &
+                call write_genus_or_species_data(current_site,                 &
+                    species_present, year, GENFIELD,                           &
                     species_present%numgenera, biom_by_g, pl_biom_by_g)
+
+                call write_dead_genus_or_species_data(current_site,            &
+                    species_present, year, SPECFIELD,                          &
+                    species_present%numspecies, dead_s, dead_ps)
+
+                call write_dead_genus_or_species_data(current_site,            &
+                    species_present, year, GENFIELD,                           &
+                    species_present%numgenera, dead_g, dead_pg)
+
+                ! Tree level data
+                if (tree_level_data) then
+                    call write_tree_data(current_site, year)
+                end if
 
  			end if
 

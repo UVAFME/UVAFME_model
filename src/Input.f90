@@ -74,7 +74,7 @@ contains
 
 		! Namelist of runtime parameters
 		namelist /uvafme/ numyears, numplots, plotsize, year_print_interval,   &
-                        maxtrees, maxcells, maxheight, fixed_seed,             &
+                        maxcells, maxheight, fixed_seed,                       &
                         debug, use_rangelist, use_climstd,                     &
                         testing, plot_level_data, tree_level_data,             &
                         with_clim_change, linear_cc, use_gcm, incr_tmin_by,    &
@@ -89,8 +89,8 @@ contains
         numplots = 200
         plotsize = 500.0
         year_print_interval = 10
-        maxtrees = 900
         maxcells = 30
+        maxtrees = maxcells*maxcells
         maxheight = 60.0
 
         ! RNG parameters
@@ -135,6 +135,8 @@ contains
                 call warning("Using default parameters")
             end if
         end if
+
+        maxtrees = maxcells*maxcells
 
 		! Create climate change variables
 		if (with_clim_change) then

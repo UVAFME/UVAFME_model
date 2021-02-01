@@ -668,7 +668,7 @@ contains
 
             ! Save plot attributes
             site%plots(ip)%cla = cla_dec(1)
-            site%lai_array = site%lai_array + cla_dec
+            site%lai_array = site%lai_array + la_dec
 
 		end do !end plot loop
 

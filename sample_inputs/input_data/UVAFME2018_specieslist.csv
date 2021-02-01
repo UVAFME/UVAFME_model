@@ -1,0 +1,5 @@
+group,genus,individual,scientific_name,common_name,AGEmax,DBHmax,Hmax,rootdepth,s,g,beta,bulk,D_L,L_C,DEGDmin,DEGDoptimum,DEGDmax,shade,drought,flood,perm,nutrient,bark_thick,fire_regen,stress_tol,death_tol,dbh_min,evergreen,litter_class,invader,seed,sprout,layering,org_tol,recr_age,NDE,NDS,species_id
+1,'Betula',1,'Betula_neoalaskana','Alaska_birch',170,76,30,1.89,0.795,1.542,1.52,0.55,0.175,0.095,400,1158,2036,4,3,3,3,3,0.021,3,3,3,0.03,0,4,1,150,1,0,2,15,0.4,0.4,BETUneoa
+2,'Picea',1,'Picea_glauca','White_spruce',300,75,30,1.16,0.805,0.873,1.32,0.421,0.15,0.5,280,1096,1911,2,4,6,2,2,0.022,5,1,1,0.03,1,11,0.5,10,0,0,2,30,0.7,0.7,PICEglau
+2,'Picea',2,'Picea_mariana','Black_spruce',250,23,22,1.16,2.02,0.748,1.32,0.434,0.15,0.5,300,1079,1911,1,5,1,1,1,0.022,1,1,1,0.03,1,11,0.5,100,0,1,1,25,0.6,0.6,PICEmari
+3,'Populus',1,'Populus_tremuloides','Quaking_aspen',150,46,24,1.89,1.053,1.397,1.52,0.422,0.15,0.316,400,1371,2461,5,1,5,2,2,0.014,2,4,3,0.03,0,7,1,200,3,0,2,15,0.3,0.3,POPUtrem

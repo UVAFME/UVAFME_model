@@ -579,18 +579,18 @@ contains
                 call csv_write(funit, dbh_sm_sd(is), .true.)
 			else
 				! Write -999.0s
-                do l = 1, 52
+                do l = 1, NHC + NHC + FC_NUM + 24
                     call csv_write(funit, RNVALID, .false.)
                 end do
                 call csv_write(funit, RNVALID, .true.)
 			endif
 		enddo
 
-		!write plot-level data if turned on
+		! Write plot-level data if turned on
 		if (plot_level_data) then
 
 			do ip = 1, site%numplots
-				do is = 1, species_pres%numgenera
+				do is = 1, num_types
 
                     ! We write lines out for every species/genus, but write
                     ! -999.0s to ones not 'present'
@@ -602,21 +602,24 @@ contains
                     ! Get species/genus name
                     if (field == 'genus') then
                         comp = trim(adjustl(species_pres%genusgroups(is)))
-            			call csv_write(funit, comp, .false.)
+            			call csv_write(funit_p, comp, .false.)
                     else
                         genname = trim(adjustl(species_pres%spec_names(is,1)))
                         comp = trim(adjustl(species_pres%spec_names(is, 2)))
-                        call csv_write(funit, genname, .false.)
-            			call csv_write(funit, comp, .false.)
+                        call csv_write(funit_p, genname, .false.)
+            			call csv_write(funit_p, comp, .false.)
                     end if
 
 					if (in_site(is)) then
 
                         ! Convert some units
-						diam_cats(ip,is,:) = diam_cats(ip,is,:)*               &
+						diam_cats(ip, is,:) = diam_cats(ip,is,:)*              &
                             HEC_TO_M2/plotsize
 						biom_cats(ip,is,:) =                                   &
 							biom_cats(ip,is,:)*HEC_TO_M2/plotsize
+                        basal_area(ip, is) = basal_area(ip, is )*              &
+                            HEC_TO_M2/plotsize
+                        biomC(ip, is) = biomC(ip, is )*HEC_TO_M2/plotsize
 
                         do l = 1, NHC
                             call csv_write(funit_p, diam_cats(ip, is, l),      &
@@ -634,7 +637,7 @@ contains
 
 					else
                         ! Write -999.0s
-                        do l = 1, 26
+                        do l = 1, NHC + NHC + 4
 						    call csv_write(funit_p, RNVALID, .false.)
                         end do
                         call csv_write(funit_p, RNVALID, .true.)
@@ -773,7 +776,7 @@ contains
 				call csv_write(funit, tot_biomC_sd(is), .true.)
 			else
 				! Write -999.0s
-                do l = 1, 11
+                do l = 1, M_TYPES + 2
                     call csv_write(funit, RNVALID, .false.)
                 end do
                 call csv_write(funit, RNVALID, .true.)
@@ -784,7 +787,7 @@ contains
 		if (plot_level_data) then
 
 			do ip = 1, site%numplots
-				do is = 1, species_pres%numgenera
+				do is = 1, num_types
 
                     ! We write lines out for every species/genus, but write
                     ! -999.0s to ones not 'present'
@@ -796,12 +799,12 @@ contains
                     ! Get species/genus name
                     if (field == 'genus') then
                         comp = trim(adjustl(species_pres%genusgroups(is)))
-            			call csv_write(funit, comp, .false.)
+            			call csv_write(funit_p, comp, .false.)
                     else
                         genname = trim(adjustl(species_pres%spec_names(is,1)))
                         comp = trim(adjustl(species_pres%spec_names(is, 2)))
-                        call csv_write(funit, genname, .false.)
-            			call csv_write(funit, comp, .false.)
+                        call csv_write(funit_p, genname, .false.)
+            			call csv_write(funit_p, comp, .false.)
                     end if
 
 					if (in_site(is)) then
@@ -809,6 +812,7 @@ contains
                         ! Convert some units
 						d_markers(ip,is,:) = d_markers(ip,is,:)*               &
                             HEC_TO_M2/plotsize
+                        biomC(ip, is) = biomC(ip, is )*HEC_TO_M2/plotsize
 
                         do l = 1, M_TYPES
                             call csv_write(funit_p, d_markers(ip, is, l),      &
@@ -819,7 +823,7 @@ contains
 
 					else
                         ! Write -999.0s
-                        do l = 1, 10
+                        do l = 1, M_TYPES + 1
 						    call csv_write(funit_p, RNVALID, .false.)
                         end do
                         call csv_write(funit_p, RNVALID, .true.)
@@ -869,7 +873,6 @@ contains
 		integer,         intent(in) :: year ! Simulation year
 
         ! Data dictionary: local variables
-        real, dimension(site%numplots, LIT_LEVS) :: fresh_litter  ! Fresh litter (t/ha)
         real, dimension(site%numplots, LIT_LEVS) :: forest_litter ! Total litter (t/ha)
 		real, dimension(site%numplots)           :: O_depth       ! Organic layer depth (cm)
         real, dimension(site%numplots)           :: M_depth       ! Moss layer depth (cm)
@@ -910,7 +913,6 @@ contains
 			avail_n(ip) = site%plots(ip)%soil%avail_N*T_TO_KG
 
 			do il = 1, LIT_LEVS
-				fresh_litter(ip, il) = site%plots(ip)%soil%litter(il)
 				forest_litter(ip, il) =                                        &
 					site%plots(ip)%soil%forest_litter(il, 1)
 			end do
@@ -926,7 +928,6 @@ contains
 		call stddev(OM_N, OM_N_mn, OM_N_sd, RNVALID)
 		call stddev(avail_n, avail_n_mn, avail_n_sd, RNVALID)
 		do il = 1, LIT_LEVS
-			call stddev(fresh_litter(:,il), fresh_lit_sd(il), fresh_lit_mn(il))
 			call stddev(forest_litter(:,il), forlitter_mn(il), forlitter_sd(il))
 		end do
 
@@ -944,9 +945,6 @@ contains
 		do il = 1, LIT_LEVS
 			call csv_write(soildecomp, forlitter_mn(il), .false.)
 		end do
-        do il = 1, LIT_LEVS
-            call csv_write(soildecomp, fresh_lit_mn(il), .false.)
-        end do
 		call csv_write(soildecomp, avail_n_mn, .true.)
 
 	end subroutine write_soiln_data
@@ -968,7 +966,6 @@ contains
 
         ! Data dictionary: local variables
 		integer :: ip, it ! Looping indices
-
 
 		do ip = 1, site%numplots
 			do it = 1, site%plots(ip)%numtrees

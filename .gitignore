@@ -1,16 +1,5 @@
 .DS_Store
 src/*mod
 src/*o
-*tex
-*aux
-*log
-*out
-*synctex.gz
-*toc
-manual_figures/*
-*bib
-*blg
-*bbl
 testing/*
-output_data/*
-sample_inputs/*
+users_manual/*

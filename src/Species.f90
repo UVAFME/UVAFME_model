@@ -301,29 +301,20 @@ contains
 	    real    :: navail ! Relative N availability
 		real    :: fpoor  ! Growth response to low nutrients (0-1)
 
+        ! Here the arrays are backwards so 1 is intolerant and 3 is tolerant
+		! (in input csv 3 is intolerant, 1 is tolerant), so must switch
+        k = 4 - n_tol
 
-		if (n_tol .eq. 0) then
+		! Max of 1.0
+		navail = min(n_avail, 1.0)
 
-            ! Can fix nitrogen - so no effect
-            poor_soil_rsp = 1.0
+        ! Calculate impact of low nutrients
+		fpoor = FERT_C1(k) + FERT_C2(k)*navail + FERT_C3(k)*navail**2
+		if (fpoor.le. 0.0) fpoor = 0.0
+		if (fpoor.ge. 1.0) fpoor = 1.0
 
-        else
+		poor_soil_rsp = fpoor*navail
 
-            ! Here the arrays are backwards so 1 is intolerant and 3 is tolerant
-    		! (in input csv 3 is intolerant, 1 is tolerant), so must switch
-            k = 4 - n_tol
-
-    		! Max of 1.0
-    		navail = min(n_avail, 1.0)
-
-            ! Calculate impact of low nutrients
-    		fpoor = FERT_C1(k) + FERT_C2(k)*navail + FERT_C3(k)*navail**2
-    		if (fpoor.le. 0.0) fpoor = 0.0
-    		if (fpoor.ge. 1.0) fpoor = 1.0
-
-    		poor_soil_rsp = fpoor*navail
-
-        end if
 
 	end function poor_soil_rsp
 
