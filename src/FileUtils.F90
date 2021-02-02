@@ -73,7 +73,7 @@ module FileUtils
         character(len = *), intent(out) :: cwd ! Working directory
 
         ! Use intrinsic to get working directory
-    	call getcwd(cwd)
+        call getcwd(cwd)
 
     end subroutine get_cwd
 
@@ -92,21 +92,21 @@ module FileUtils
         !
 
         ! Data dictonary: local variables
-    	integer :: iunit          ! File unit (increments after first call)
-    	logical :: first = .true. ! First time this has been called?
-    	save
+        integer :: iunit          ! File unit (increments after first call)
+        logical :: first = .true. ! First time this has been called?
+        save
 
-    	if (first) then
+        if (first) then
             ! Set first to false and iunit to base unit on first call
-    		iunit = BASE_UNIT
-    		first = .false.
-    	else
+            iunit = BASE_UNIT
+            first = .false.
+        else
             ! Otherwise, increment
-    		iunit = iunit + 1
-    	endif
+            iunit = iunit + 1
+        endif
 
         ! Set to output
-    	unit_number = iunit
+        unit_number = iunit
 
     end function unit_number
 
@@ -125,77 +125,77 @@ module FileUtils
         !
 
         ! Data dictionary: calling arguments
-    	character(len = *), intent(in)           :: filename ! Name of file to open
-    	character(len = *), intent(in), optional :: mode     ! Optional mode ('r', 'w', 'rw')
+        character(len = *), intent(in)           :: filename ! Name of file to open
+        character(len = *), intent(in), optional :: mode     ! Optional mode ('r', 'w', 'rw')
 
         ! Data dictionary: local variables
-    	character(len = 9)           :: fmode       ! File open mode
-    	logical                      :: file_exists ! Does the file exist?
-    	character(len = MAX_PATH)    :: fname       ! Local filename (trimmed)
-    	character(len = MAX_CHAR)    :: message     ! Error message
-    	integer                      :: i           ! Looping index
+        character(len = 9)           :: fmode       ! File open mode
+        logical                      :: file_exists ! Does the file exist?
+        character(len = MAX_PATH)    :: fname       ! Local filename (trimmed)
+        character(len = MAX_CHAR)    :: message     ! Error message
+        integer                      :: i           ! Looping index
         integer                      :: ios         ! I/O status
         integer                      :: iunit       ! File unit number
-    	integer, dimension(MAX_PATH) :: farray      ! Array of characters of file name
+        integer, dimension(MAX_PATH) :: farray      ! Array of characters of file name
 
-    	! Get mode of open (read, write, or read/write)
-    	! Defaults to read/write
-    	if (present(mode)) then
-    		if (mode == 'r' .or. mode == 'R') then
-    			fmode = 'read'
-    		else if (mode == 'w' .or. mode == 'W') then
-    			fmode = 'write'
-    		else if (mode == 'rw' .or. mode == 'RW'                            &
-    				   .or. mode == 'wr' .or. mode == 'WR') then
-    			fmode = 'readwrite'
-    		else
-    			fmode = 'readwrite'
-    		endif
-    	else
-    		fmode = 'readwrite'
-    	endif
+        ! Get mode of open (read, write, or read/write)
+        ! Defaults to read/write
+        if (present(mode)) then
+            if (mode == 'r' .or. mode == 'R') then
+                fmode = 'read'
+            else if (mode == 'w' .or. mode == 'W') then
+                fmode = 'write'
+            else if (mode == 'rw' .or. mode == 'RW'                            &
+                       .or. mode == 'wr' .or. mode == 'WR') then
+                fmode = 'readwrite'
+            else
+                fmode = 'readwrite'
+            endif
+        else
+            fmode = 'readwrite'
+        endif
 
-    	! Trim filename of whitespace
-    	fname = trim(adjustl(filename))
+        ! Trim filename of whitespace
+        fname = trim(adjustl(filename))
 
-    	if (fmode == 'read' .or. fmode == 'readwrite') then
+        if (fmode == 'read' .or. fmode == 'readwrite') then
 
             ! Check for valid name of file - only ASCII allowed
-    		farray = 0
-    		do i = 1, len_trim(fname)
-    			farray(i) = ichar(fname(i:i))
-    		enddo
-    		if (any(farray > 127)) then
-    			call fatal_error("INVALID filename")
-    		endif
-    	endif
+            farray = 0
+            do i = 1, len_trim(fname)
+                farray(i) = ichar(fname(i:i))
+            enddo
+            if (any(farray > 127)) then
+                call fatal_error("INVALID filename")
+            endif
+        endif
 
-    	! Does the file exist?
-    	inquire(file = fname, exist = file_exists)
+        ! Does the file exist?
+        inquire(file = fname, exist = file_exists)
 
-    	! Open file if conditions are correct
-    	if (file_exists .and. fmode == 'write') then
-    		write(message, '(A,A,A)') "File ", fname(1:len_trim(fname)),       &
-    			" exists. Cannot open write only."
-    		call warning(message)
-    		open_file = INVALID
-    	else if (.not. file_exists .and. fmode == 'read') then
+        ! Open file if conditions are correct
+        if (file_exists .and. fmode == 'write') then
             write(message, '(A,A,A)') "File ", fname(1:len_trim(fname)),       &
-    			" does not exist. Can't read."
+                " exists. Cannot open write only."
             call warning(message)
-    		iunit = INVALID
-    	else
-    		iunit = unit_number()
-    		open(iunit, file = fname, action = fmode, iostat = ios)
-    		if (ios .ne. 0) then
+            open_file = INVALID
+        else if (.not. file_exists .and. fmode == 'read') then
+            write(message, '(A,A,A)') "File ", fname(1:len_trim(fname)),       &
+                " does not exist. Can't read."
+            call warning(message)
+            iunit = INVALID
+        else
+            iunit = unit_number()
+            open(iunit, file = fname, action = fmode, iostat = ios)
+            if (ios .ne. 0) then
                 write(message, '(A,A,A,I6)') "Problem opening",                &
                     fname(1:len_trim(fname)), " ios: ", ios
                 call warning(message)
-    			iunit = INVALID
-    		endif
-    	endif
+                iunit = INVALID
+            endif
+        endif
 
-    	open_file = iunit
+        open_file = iunit
 
     end function open_file
 
@@ -214,37 +214,37 @@ module FileUtils
         !
 
         ! Data dictionary: calling arguments
-    	integer, intent(in) :: funit    ! Unit number of file
-    	integer, intent(in) :: nheaders ! Number of lines to skip
+        integer, intent(in) :: funit    ! Unit number of file
+        integer, intent(in) :: nheaders ! Number of lines to skip
 
         ! Data dictionary: local variables
-    	integer                   :: ios     ! I/O status
+        integer                   :: ios     ! I/O status
         integer                   :: lpcount ! Line counter
-    	character(len = MAX_LINE) :: line    ! Line read in
+        character(len = MAX_LINE) :: line    ! Line read in
         character(len = MAX_CHAR) :: message ! Error message
 
-    	lpcount = 0
+        lpcount = 0
 
-    	! Read each line in file until read end, incrementing line counter
-    	 do
-    		read(funit, *, end = 10, iostat = ios) line
-    		if (ios == 0) then
-    			! Success, increment counter
-    			lpcount = lpcount + 1
-    		 else
+        ! Read each line in file until read end, incrementing line counter
+         do
+            read(funit, *, end = 10, iostat = ios) line
+            if (ios == 0) then
+                ! Success, increment counter
+                lpcount = lpcount + 1
+             else
                  write(message, '(A,I4,A,I6)') "Problem reading file unit",    &
                     funit, " ios: ", ios
-    			call fatal_error(message)
-    		 endif
-    	 end do
+                call fatal_error(message)
+             endif
+         end do
 
     10  continue
 
         ! Return number of total lines minus headers
-    	count_records = lpcount - nheaders
+        count_records = lpcount - nheaders
 
         ! Rewind the file
-    	rewind(funit)
+        rewind(funit)
 
     end function count_records
 
@@ -261,41 +261,41 @@ module FileUtils
         !
 
         ! Data dictionary: calling arguments
-    	character(len = *), intent(in)  ::  subdir   ! Subdirectory
-    	character(len = *), intent(in)  ::  filename ! File name
-    	character(len = *), intent(out) ::  pathname ! Full path
+        character(len = *), intent(in)  ::  subdir   ! Subdirectory
+        character(len = *), intent(in)  ::  filename ! File name
+        character(len = *), intent(out) ::  pathname ! Full path
 
         ! Data dictionary: local variables
-    	character(len = MAX_PATH) :: pname   ! Pathname
-    	character(len = MAX_FILE) :: tmpsub  ! Trimmed subdirectory name
+        character(len = MAX_PATH) :: pname   ! Pathname
+        character(len = MAX_FILE) :: tmpsub  ! Trimmed subdirectory name
         character(len = MAX_FILE) :: tmpfile ! Trimmed filename
-    	character(len = 15)       :: fmtstr  ! Format string
-    	integer                   :: flen    ! File name length
+        character(len = 15)       :: fmtstr  ! Format string
+        integer                   :: flen    ! File name length
         integer                   :: slen    ! Subdirectory name length
 
-    	! Reset pathname
-    	pathname = ''
+        ! Reset pathname
+        pathname = ''
 
-    	! Create temporary directory and filename and remove whitespace
-    	tmpsub = subdir
-    	tmpfile = filename
-    	call remove(tmpsub)
-    	call remove(tmpfile)
+        ! Create temporary directory and filename and remove whitespace
+        tmpsub = subdir
+        tmpfile = filename
+        call remove(tmpsub)
+        call remove(tmpfile)
 
         ! Get length of directory and filename
-    	slen = len_trim(adjustl(tmpsub))
-    	flen = len_trim(adjustl(tmpfile))
+        slen = len_trim(adjustl(tmpsub))
+        flen = len_trim(adjustl(tmpfile))
 
         ! Construct format string
-    	write(fmtstr, '(a,i2,a,a,i2,a)'), '(a', slen, ',a1,' ,'a', flen, ')'
+        write(fmtstr, '(a,i2,a,a,i2,a)'), '(a', slen, ',a1,' ,'a', flen, ')'
 
         ! Construct path
-    	write(pname, fmtstr) tmpsub(1:slen), SEPARATOR, tmpfile(1:flen)
+        write(pname, fmtstr) tmpsub(1:slen), SEPARATOR, tmpfile(1:flen)
 
         ! Remove any whitespace
-    	call remove(pname)
+        call remove(pname)
 
-    	pathname = pname
+        pathname = pname
 
     end subroutine build_pathname
 
@@ -312,39 +312,39 @@ module FileUtils
         !
 
         ! Data dictionary: calling arguments
-    	character(len = *), intent(in)  :: suffix   ! Suffix
-    	character(len = *), intent(in)  :: str      ! Input string
-    	character(len = *), intent(out) :: filename ! Output filename
+        character(len = *), intent(in)  :: suffix   ! Suffix
+        character(len = *), intent(in)  :: str      ! Input string
+        character(len = *), intent(out) :: filename ! Output filename
 
         ! Data dictionary: local variables
-    	character(len = MAX_FILE/2) :: tmpstr ! Trimmed string
+        character(len = MAX_FILE/2) :: tmpstr ! Trimmed string
         character(len = MAX_FILE/2) :: tmpsuf ! Trimmed suffix
-    	character(len = MAX_FILE)   :: fname  ! Output filename
-    	character(len = 15)         :: fmtstr ! Format string
-    	integer                     :: strlen ! Length of string
+        character(len = MAX_FILE)   :: fname  ! Output filename
+        character(len = 15)         :: fmtstr ! Format string
+        integer                     :: strlen ! Length of string
         integer                     :: suflen ! Length of suffix
 
-    	! Reset filename
-    	filename = ''
+        ! Reset filename
+        filename = ''
 
         ! Create temporary string and suffix and remove whitespace
-    	tmpstr = str
-    	tmpsuf = suffix
-    	call remove(tmpstr)
-    	call remove(tmpsuf)
+        tmpstr = str
+        tmpsuf = suffix
+        call remove(tmpstr)
+        call remove(tmpsuf)
 
         ! Get length of string and suffix
-    	strlen = len_trim(adjustl(tmpstr))
-    	suflen = len_trim(adjustl(tmpsuf))
+        strlen = len_trim(adjustl(tmpstr))
+        suflen = len_trim(adjustl(tmpsuf))
 
-    	! Construct format string
-    	write(fmtstr, '(a,i2,a,i2,a)'), '(a', strlen, ',a', suflen, ')'
+        ! Construct format string
+        write(fmtstr, '(a,i2,a,i2,a)'), '(a', strlen, ',a', suflen, ')'
 
         ! Construct filename and remove whitespace
-    	write(fname, fmtstr), tmpstr(1:strlen), tmpsuf(1:suflen)
-    	call remove(fname)
+        write(fname, fmtstr), tmpstr(1:strlen), tmpsuf(1:suflen)
+        call remove(fname)
 
-    	filename = fname
+        filename = fname
 
     end subroutine build_filename
 
@@ -361,10 +361,10 @@ module FileUtils
         !
 
         ! Data dictionary: calling arguments
-    	character(len = *), intent(in) :: message ! Error message
+        character(len = *), intent(in) :: message ! Error message
 
         ! Print the message
-    	write(*, *) message
+        write(*, *) message
 
     end subroutine warning
 
@@ -381,10 +381,10 @@ module FileUtils
         !
 
         ! Data dictionary: calling arguments
-    	character(len = *), intent(in) :: message ! Error message
+        character(len = *), intent(in) :: message ! Error message
 
         ! Write error message
-    	write(*, *) message
+        write(*, *) message
 
         ! Stop the program
         stop 10

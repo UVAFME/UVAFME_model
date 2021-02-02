@@ -12,7 +12,7 @@
 !*******************************************************************************
 
     ! Data dictionary: calling arguments
-    integer, intent(in)  :: lun ! Unit number of csv file 
+    integer, intent(in)  :: lun ! Unit number of csv file
 
     ! Data dictionary: local variables
     logical :: adv ! Advance - yes or no?
@@ -23,5 +23,5 @@
 
     ! Write line
     do i = 1, size(array, 2)
-		  call csv_write(lun, array(:, i), adv)
+          call csv_write(lun, array(:, i), adv)
     enddo

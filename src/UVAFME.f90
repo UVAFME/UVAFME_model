@@ -80,80 +80,80 @@ program UVAFME
 
 !:.............................................................................:
 
-	! Get command-line filelist name argument
-	nargs = command_argument_count()
-	if (nargs /= 1) then
-		filelist = ''
-	else
-		call get_command_argument(1, filelist)
-	endif
+    ! Get command-line filelist name argument
+    nargs = command_argument_count()
+    if (nargs /= 1) then
+        filelist = ''
+    else
+        call get_command_argument(1, filelist)
+    endif
 
-	! Open and read file list & runtime file, initialize runtime parameters,
+    ! Open and read file list & runtime file, initialize runtime parameters,
     ! open all other input files, and read and initialize litter parameters file
- 	call initialize_inputFiles(filelist)
+    call initialize_inputFiles(filelist)
 
- 	! Read site list file and count how many sites to run
- 	call read_sitelist(all_site_vals)
- 	numsites = size(all_site_vals(:, 1))
+    ! Read site list file and count how many sites to run
+    call read_sitelist(all_site_vals)
+    numsites = size(all_site_vals(:, 1))
 
-	! Read in species data file and initialize groups of genera and species
- 	call read_speciesdata(species_data)
-	call initialize_genus_groups(species_present, species_data)
+    ! Read in species data file and initialize groups of genera and species
+    call read_speciesdata(species_data)
+    call initialize_genus_groups(species_present, species_data)
 
- 	! Open output files and write headers
- 	call initialize_outputFiles
+    ! Open output files and write headers
+    call initialize_outputFiles
 
- 	! Write runtime vars to screen
- 	call drawBanner(numsites, species_present)
+    ! Write runtime vars to screen
+    call drawBanner(numsites, species_present)
 
- 	! Start timing
- 	call cpu_time(start_time)
+    ! Start timing
+    call cpu_time(start_time)
 
     ! Allocate species_ids to the number of site and species objects
     allocate(species_ids(numsites, size(species_data)))
 
 
- 	do sndx = 1, numsites
+    do sndx = 1, numsites
 
         ! Set the random number generator seed
         call set_site_rng_seed(fixed_seed)
 
- 		! Initialize current site
- 		call initialize_site(current_site, all_site_vals(sndx, :),            &
+        ! Initialize current site
+        call initialize_site(current_site, all_site_vals(sndx, :),            &
             species_data, species_ids, sndx)
 
         ! Make sure the site exists and has valid climate data
-		if (current_site%site_id == INVALID) then
- 			write(*, *) '       No valid site or climate data for site ',      &
-				current_site%site_name
- 			write(*, *) '            Skipping site ', current_site%site_name
- 			write(*, *) '                          '
+        if (current_site%site_id == INVALID) then
+            write(*, *) '       No valid site or climate data for site ',      &
+                current_site%site_name
+            write(*, *) '            Skipping site ', current_site%site_name
+            write(*, *) '                          '
 
-			! Free the memory used by this site
-			call delete_site(current_site)
- 			cycle
- 		endif
+            ! Free the memory used by this site
+            call delete_site(current_site)
+            cycle
+         endif
 
- 		! Also skip this site if no species are present
-		if ( size(current_site%species) .eq. 0 )  then
-			write(*, *) '              No species present in site ',           &
-				current_site%site_id
-			write(*, *) '            Skipping site ', current_site%site_name
- 			write(*, *) '             '
+         ! Also skip this site if no species are present
+        if ( size(current_site%species) .eq. 0 )  then
+            write(*, *) '              No species present in site ',           &
+                current_site%site_id
+            write(*, *) '            Skipping site ', current_site%site_name
+            write(*, *) '             '
 
-			! Free the memory used by this site
-			call delete_site(current_site)
- 			cycle
- 		endif
+            ! Free the memory used by this site
+            call delete_site(current_site)
+            cycle
+         endif
 
- 		! Print out current site and site vars to screen
- 		call showProgress(current_site)
+        ! Print out current site and site vars to screen
+        call showProgress(current_site)
 
- 		! Run the model
- 		do year = 0, numyears
+        ! Run the model
+        do year = 0, numyears
 
- 			! Calculate current weather/site variables for the year
- 			call BioGeoClimate(current_site, year)
+            ! Calculate current weather/site variables for the year
+            call BioGeoClimate(current_site, year)
 
             ! Write climate and soil data
             if (mod(year, year_print_interval) == 0 .or. year == numyears) then
@@ -161,19 +161,19 @@ program UVAFME
                 call write_soiln_data(current_site, year)
             end if
 
- 			! Calculate current LAI and light environment
- 			call Canopy(current_site)
+            ! Calculate current LAI and light environment
+            call Canopy(current_site)
 
- 			! Run annual growth, mortality, and renewal
- 			call Growth(current_site)
- 			call Mortality(current_site, year)
+            ! Run annual growth, mortality, and renewal
+            call Growth(current_site)
+            call Mortality(current_site, year)
             call Renewal(current_site, year)
 
- 			! Print output
- 			if (mod(year, year_print_interval) == 0 .or. year == numyears) then
+            ! Print output
+            if (mod(year, year_print_interval) == 0 .or. year == numyears) then
 
- 				! Across-species attributes
- 				call total_plot_values(current_site, year)
+                ! Across-species attributes
+                call total_plot_values(current_site, year)
 
                 ! Genus-and species-level attributes
                 call write_genus_or_species_data(current_site,                 &
@@ -197,22 +197,22 @@ program UVAFME
                     call write_tree_data(current_site, year)
                 end if
 
- 			end if
+            end if
 
- 		end do
+        end do
 
- 		! Free the memory used by this site and tell user we finished the
+        ! Free the memory used by this site and tell user we finished the
         ! site
- 		call delete_site(current_site)
- 		write(sitef, *) 'Finished site ', current_site%site_id
+        call delete_site(current_site)
+        write(sitef, *) 'Finished site ', current_site%site_id
 
- 		! Print current run time
- 		call cpu_time(total_time)
- 		write(*, *) '  Cumulative time : ', total_time - start_time
- 		write(*, '(A80)')                                                  &
+        ! Print current run time
+        call cpu_time(total_time)
+        write(*, *) '  Cumulative time : ', total_time - start_time
+        write(*, '(A80)')                                                      &
  '============================================================================='
 
- 	end do
+    end do
 
     ! Close output files created
     call close_outputFiles
@@ -236,71 +236,71 @@ subroutine drawBanner(numsites, species_present)
     implicit none
 
     ! Data dictionary: calling arguments
-	type(Groups), intent(in) :: species_present ! Species/genus names
-	integer,      intent(in) :: numsites        ! Number of sites to run
+    type(Groups), intent(in) :: species_present ! Species/genus names
+    integer,      intent(in) :: numsites        ! Number of sites to run
 
 
     write(*, 500)                                                              &
 '============================================================================='
     write(*, 500)                                                              &
 '                       UVA Forest Model Enhanced                      '
-	write(*, 500)                                                              &
+    write(*, 500)                                                              &
 '                           2018 Version 3.0                           '
-	write(*, 500)                                                              &
+    write(*, 500)                                                              &
 '============================================================================='
 
-	write(*, *) '  Running with parameters:'
-	write(*, 400) 'Number of sites:', numsites
-	write(*, 400) 'Number of years:', numyears
-	write(*, 400) 'Number of plots:', numplots
-	write(*, 400) 'Number of species:', species_present%numspecies
-	write(*, 400) 'Maximum number of trees:', maxtrees
+    write(*, *) '  Running with parameters:'
+    write(*, 400) 'Number of sites:', numsites
+    write(*, 400) 'Number of years:', numyears
+    write(*, 400) 'Number of plots:', numplots
+    write(*, 400) 'Number of species:', species_present%numspecies
+    write(*, 400) 'Maximum number of trees:', maxtrees
     write(*, 400) 'Maximum number of cells:', maxcells*maxcells
-	write(*, 401) 'Plotsize:', plotsize
+    write(*, 401) 'Plotsize:', plotsize
 
-	if (with_clim_change) then
+    if (with_clim_change) then
 
-		write(*, *) 'Running with climate change'
-		write(*, 400) 'Duration in years:', gcm_duration
+        write(*, *) 'Running with climate change'
+        write(*, 400) 'Duration in years:', gcm_duration
 
-		if (linear_cc) then
+        if (linear_cc) then
 
-			write(*, *) 'Running with linear cc'
+            write(*, *) 'Running with linear cc'
 
-			if (incr_or_decr_temp .eq. 'incr' .and.                            &
-				incr_or_decr_prcp .eq. 'incr') then
-				write(*, 401) 'Total tmin increase', incr_tmin_by
-				write(*, 401) 'Total tmax increase', incr_tmax_by
-				write(*, 401) 'Total precip increase', incr_precip_by
-			else if (incr_or_decr_temp .eq. 'decr' .and.                       &
-				incr_or_decr_prcp .eq. 'decr') then
-				write(*, 401) 'Total tmin decrease', decr_tmin_by
-				write(*, 401) 'Total tmax decrease', decr_tmax_by
-				write(*, 401) 'Total precip decrease', decr_precip_by
-			else if (incr_or_decr_temp .eq. 'incr' .and.                       &
-				incr_or_decr_prcp .eq. 'decr') then
-				write(*, 401) 'Total tmin increase', incr_tmin_by
-				write(*, 401) 'Total tmax increase', incr_tmax_by
-				write(*, 401) 'Total precip decrease', decr_precip_by
-			else if (incr_or_decr_temp .eq. 'decr' .and.                       &
-				incr_or_decr_prcp .eq. 'incr') then
-				write(*, 401) 'Total tmin decrease', decr_tmin_by
-				write(*, 401) 'Total tmax decrease', decr_tmin_by
-				write(*, 401) 'Total precip increase', incr_precip_by
-			end if
+            if (incr_or_decr_temp .eq. 'incr' .and.                            &
+                incr_or_decr_prcp .eq. 'incr') then
+                write(*, 401) 'Total tmin increase', incr_tmin_by
+                write(*, 401) 'Total tmax increase', incr_tmax_by
+                write(*, 401) 'Total precip increase', incr_precip_by
+            else if (incr_or_decr_temp .eq. 'decr' .and.                       &
+                incr_or_decr_prcp .eq. 'decr') then
+                write(*, 401) 'Total tmin decrease', decr_tmin_by
+                write(*, 401) 'Total tmax decrease', decr_tmax_by
+                write(*, 401) 'Total precip decrease', decr_precip_by
+            else if (incr_or_decr_temp .eq. 'incr' .and.                       &
+                incr_or_decr_prcp .eq. 'decr') then
+                write(*, 401) 'Total tmin increase', incr_tmin_by
+                write(*, 401) 'Total tmax increase', incr_tmax_by
+                write(*, 401) 'Total precip decrease', decr_precip_by
+            else if (incr_or_decr_temp .eq. 'decr' .and.                       &
+                incr_or_decr_prcp .eq. 'incr') then
+                write(*, 401) 'Total tmin decrease', decr_tmin_by
+                write(*, 401) 'Total tmax decrease', decr_tmin_by
+                write(*, 401) 'Total precip increase', incr_precip_by
+            end if
 
-		else if (use_gcm) then
+        else if (use_gcm) then
 
-			write(*, *) 'Using GCM data:'
-			write(*, 400) 'GCM start year ', start_gcm
-			write(*, 400) 'GCM end year ', end_gcm
-		end if
-	end if
+            write(*, *) 'Using GCM data:'
+            write(*, 400) 'GCM start year ', start_gcm
+            write(*, 400) 'GCM end year ', end_gcm
+        end if
+    end if
 
-	write(*, 400) 'Printing interval in years:', year_print_interval
-	write(*, 500)                                                              &
+    write(*, 400) 'Printing interval in years:', year_print_interval
+    write(*, 500)                                                              &
 '============================================================================='
-	write(*, *)
+    write(*, *)
 
     400 format(A30, I10)
     401 format(A30, F10.3)
@@ -321,15 +321,15 @@ subroutine showProgress(asite)
     !    07/26/12    K. Holcomb           Original Code
     !
 
-	use Parameters
-	use Site
-	implicit none
+    use Parameters
+    use Site
+    implicit none
 
     ! Data dictionary: calling arguments
-	type(SiteData), intent(in) :: asite ! Site object
+    type(SiteData), intent(in) :: asite ! Site object
 
     ! Data dictionary: local variables
-	integer ::  num_site_species ! Number of species present at site
+    integer ::  num_site_species ! Number of species present at site
 
     ! Get number of species at site
     num_site_species = size(asite%species)
