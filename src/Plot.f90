@@ -221,7 +221,17 @@ contains
         ! Data dictionary: calling arguments
         class(PlotData), intent(inout) :: self ! Plot object
 
+        ! Data dictionary: local variables
+        integer :: it ! Looping index
+
+
         ! Deallocate arrays
+        do it = 1, self%numtrees
+            call delete_tree(self%trees(it))
+        end do
+        do it = 1, self%num_dead
+            call delete_tree(self%deadtrees(it))
+        end do
         if (allocated(self%trees)) deallocate(self%trees)
         if (allocated(self%deadtrees)) deallocate(self%deadtrees)
         if (allocated(self%cells)) deallocate(self%cells)

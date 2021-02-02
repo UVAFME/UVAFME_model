@@ -795,5 +795,26 @@ contains
     end subroutine write_tree_csv
 
     !:.........................................................................:
+    
+    subroutine delete_tree(self)
+        !
+        !  Deletes a tree object, nullifying its pointers
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    02/02/21     A. C. Foster        Original Code
+        !
+
+        ! Data dictionary: calling arguments
+        class(TreeData), intent(inout) :: self
+
+        if (associated(self%spec_ptr)) then
+            nullify(self%spec_ptr)
+        end if
+
+    end subroutine delete_tree
+
+    !:.........................................................................:
 
 end module Tree
