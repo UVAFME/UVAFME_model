@@ -3,3 +3,4 @@ src/*mod
 src/*o
 testing/*
 users_manual/*
+sample_inputs/output_data/*
