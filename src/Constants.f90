@@ -44,7 +44,7 @@ module Constants
 
     ! Array-related constants
     integer, parameter :: LIT_LEVS = 20 ! Number of litter classes
-    integer, parameter :: M_TYPES = 7   ! Number of mortality types
+    integer, parameter :: M_TYPES = 8   ! Number of mortality types
     integer, parameter :: FC_NUM = 5    ! Number of environmental stressors
     integer, parameter :: IROOT = 13    ! Array location of roots in litter array
     integer, parameter :: ITW = 16      ! Array location of twigs in litter array
