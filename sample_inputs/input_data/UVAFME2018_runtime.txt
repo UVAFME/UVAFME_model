@@ -15,7 +15,7 @@ year_print_interval=5
 fixed_seed=.true.
 
 numyears=200
-numplots=10
+numplots=100
 plotsize=500
 maxcells=30
 
@@ -30,6 +30,6 @@ maxcells=30
 !gcm_duration=100
 !start_gcm=100
 !end_gcm=200
-tree_level_data=.true.
-plot_level_data=.true.
+!tree_level_data=.true.
+!plot_level_data=.true.
 /
