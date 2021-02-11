@@ -1134,7 +1134,7 @@ module Soil
         ! Subtract immobilization from total mineralization to get
         ! plant-available N
         ! Add throughfall N mineralization, mineral N, and N from fires
-        avail_n = max(0.0, tot_Nmin - tot_Nimob + + tfallNmin + soil%fan +     &
+        avail_n = max(0.0, tot_Nmin - tot_Nimob + tfallNmin + soil%fan +       &
             min_Nmin)
 
         ! Calculate total soil respiration

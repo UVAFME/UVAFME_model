@@ -115,7 +115,6 @@ contains
         med_stems = 0.0
         site_lai = 0.0
         totbiomC = 0.0
-        basal_area = 0.0
 
         allocate(ht(site%numplots, maxcells*maxcells))
         allocate(basal_area(site%numplots, maxcells*maxcells))

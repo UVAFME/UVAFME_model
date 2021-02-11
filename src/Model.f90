@@ -172,7 +172,7 @@ contains
             ! Using climate change from input file - figure out which year
             ! we are in the file
             gcm_year = start_gcm + year - site%gcm_year
-            if ( gcm_year .ge. start_gcm .and. gcm_year .le. end_gcm ) then
+            if (gcm_year .ge. start_gcm .and. gcm_year .le. end_gcm) then
 
                 ! Read in climate change data
                 call read_gcm_climate(site%site_id, gcm_year, start_gcm, tmin, &
@@ -908,7 +908,7 @@ contains
                             site%plots(ip)%trees(it)%mort_marker = .true.
                         else
                             ! Still possible to live
-                            site%plots(ip)%trees(it)%mort_count = .false.
+                            site%plots(ip)%trees(it)%mort_count = 0
                         endif
                     else
                         ! Rest mortality counter and set flag to false
@@ -1943,7 +1943,7 @@ contains
 
                         ! We don't allow seedling regeneration the first
                         ! year of a fire
-                        firecheck: if (.not. site%plots(ip)%fire) then
+                        firecheck: if (site%plots(ip)%fire == 0) then
 
                             ! Put seeds into seedling bank if envstress is
                             ! high enough

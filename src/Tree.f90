@@ -33,7 +33,7 @@ module Tree
         integer                     :: mort_count         ! How many years tree has experiences low growth
         integer                     :: tree_age           ! Tree age (years)
         integer                     :: stressor           ! Which factor is most stressful
-        integer                     :: conifer            ! 1: conifer; 2: deciduous
+        logical                     :: conifer            ! 1: conifer; 0: deciduous
         integer                     :: species_index      ! Species index - points to SpeciesData array location
         logical                     :: mort_marker        ! Is tree marked for death?
     end type TreeData
@@ -795,7 +795,7 @@ contains
     end subroutine write_tree_csv
 
     !:.........................................................................:
-    
+
     subroutine delete_tree(self)
         !
         !  Deletes a tree object, nullifying its pointers

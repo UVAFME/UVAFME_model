@@ -13,8 +13,8 @@ LIBS =
 
 F90 =  ifort
 
-#DBG = -CB -g -traceback -fp-model strict
-#OPT = -O2 -axcore-avx2 -xavx -align array64byte -ipo
+ #DBG = -CB -g -traceback -fp-model strict
+ #OPT = -O2 -axcore-avx2 -xavx -align array64byte -ipo
 
 F90FLAGS = $(DBG) $(OPT)
 LDFLAGS =

@@ -52,8 +52,8 @@ program UVAFME
         use GenusGroups
         implicit none
 
-        type(Groups) ::  species_present ! Species/genus names
-        integer      ::  numsites        ! Number of sites to run
+        type(Groups), intent(in) ::  species_present ! Species/genus names
+        integer,      intent(in) ::  numsites        ! Number of sites to run
 
     end subroutine drawBanner
 

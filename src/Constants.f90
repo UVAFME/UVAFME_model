@@ -44,16 +44,16 @@ module Constants
 
     ! Array-related constants
     integer, parameter :: LIT_LEVS = 20 ! Number of litter classes
-    integer, parameter :: M_TYPES = 8   ! Number of mortality types
     integer, parameter :: FC_NUM = 5    ! Number of environmental stressors
+    integer, parameter :: M_TYPES = 7   ! Number of mortality types
     integer, parameter :: IROOT = 13    ! Array location of roots in litter array
     integer, parameter :: ITW = 16      ! Array location of twigs in litter array
     integer, parameter :: ISBR = 17     ! Array location of small branches in litter array
     integer, parameter :: ILBR = 18     ! Array location of large branches in litter array
     integer, parameter :: ISBL = 14     ! Array location of small boles in litter array
     integer, parameter :: ILBL = 15     ! Array location of large boles in litter array
-    integer, parameter :: IFIRE = 7     ! Array location of burned trees
-    integer, parameter :: IWIND = 8     ! Array location of wind-killed trees
+    integer, parameter :: IFIRE = 6     ! Array location of burned trees
+    integer, parameter :: IWIND = 7     ! Array location of wind-killed trees
 
     ! Tree-related constants
     real,    parameter :: STD_HT = 1.3         ! Standard height for DBH measurements (m)

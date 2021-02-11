@@ -287,7 +287,7 @@ module FileUtils
         flen = len_trim(adjustl(tmpfile))
 
         ! Construct format string
-        write(fmtstr, '(a,i2,a,a,i2,a)'), '(a', slen, ',a1,' ,'a', flen, ')'
+        write(fmtstr, '(a,i2,a,a,i2,a)') '(a', slen, ',a1,' ,'a', flen, ')'
 
         ! Construct path
         write(pname, fmtstr) tmpsub(1:slen), SEPARATOR, tmpfile(1:flen)
@@ -338,10 +338,10 @@ module FileUtils
         suflen = len_trim(adjustl(tmpsuf))
 
         ! Construct format string
-        write(fmtstr, '(a,i2,a,i2,a)'), '(a', strlen, ',a', suflen, ')'
+        write(fmtstr, '(a,i2,a,i2,a)') '(a', strlen, ',a', suflen, ')'
 
         ! Construct filename and remove whitespace
-        write(fname, fmtstr), tmpstr(1:strlen), tmpsuf(1:suflen)
+        write(fname, fmtstr) tmpstr(1:strlen), tmpsuf(1:suflen)
         call remove(fname)
 
         filename = fname

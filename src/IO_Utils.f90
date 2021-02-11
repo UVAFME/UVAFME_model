@@ -165,6 +165,7 @@ contains
         ! Site list
         call open_and_check('_sitelist.csv', slistdir, slist, 1, 'site-list')
 
+
         ! Species attributes file
         call open_and_check('_specieslist.csv', splistdir, splist, 1,          &
             'species-list')
@@ -174,6 +175,7 @@ contains
 
         ! Climate file
         call open_and_check('_climate.csv', climatedir, cfile, 1, 'climate')
+
 
         ! Extra climate file (cld, rh, wind)
         call open_and_check('_climate_ex.csv', climatedir, cexfile, 1,         &
@@ -192,6 +194,7 @@ contains
             call open_and_check('_climate_ex_stddev.csv', climatedir,          &
                 cexstdfile, 1, 'extra climate stddev')
         end if
+
 
         ! Climate change data from input file
         if (use_gcm) then

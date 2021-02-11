@@ -50,7 +50,7 @@ contains
 
         ! Read and initialize litter parameters file
         call read_litterpars(litter_params)
-
+        
     end subroutine initialize_inputFiles
 
     !:.........................................................................:
@@ -330,7 +330,7 @@ contains
         litter_pars = RNVALID
 
         ! We don't care about the header
-        read(litterfile, '(a)'), header
+        read(litterfile, '(a)') header
 
         ! Read litter parameters and set to litter_pars array
         lc = 0
@@ -557,7 +557,7 @@ contains
 
         ! Read in first climate file ---
         ! We don't care about the header
-        read(cfile, '(a)'), header
+        read(cfile, '(a)') header
 
         ! Read until we find the correct site id
         do
@@ -578,7 +578,7 @@ contains
 
         ! Now read in the next climate file ----
         ! We don't care about the header
-        read(cexfile, '(a)'), header
+        read(cexfile, '(a)') header
 
         ! Now read the file until we find the correct siteid
         do
@@ -643,7 +643,7 @@ contains
 
         ! Read first file ---
         ! We don't care about the header
-        read(cstdfile, '(a)'), header
+        read(cstdfile, '(a)') header
 
         ! Read the file until we find the correct siteid
         do
@@ -663,7 +663,7 @@ contains
 
         ! Now read in the second file
         ! We don't care about the header
-        read(cexstdfile, '(a)'), header
+        read(cexstdfile, '(a)') header
 
         ! Read the file until we find the correct siteid
         do
@@ -727,7 +727,7 @@ contains
             rewind(cgcmfile)
 
             ! We don't care about the header
-            read(cgcmfile, '(a)'), header
+            read(cgcmfile, '(a)') header
 
         endif
 
@@ -800,7 +800,7 @@ contains
         siteid = INVALID
 
         ! We don't care about the header
-        read(sfile, '(a)'), header
+        read(sfile, '(a)') header
 
         ! Read until we find the correct site ID
         do

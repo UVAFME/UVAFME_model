@@ -9,10 +9,10 @@
 # Import format: .csv
 # #########################
 
-require(ggplot2)
-require(patchwork)
-require(dplyr)
-require(reshape2)
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+library(reshape2)
 
 ## Output directory
 output_dir <- 'output_data_sample'
@@ -139,13 +139,3 @@ p1 <- ggsp + gggen + gdsp + ggtot +
 p2 <- ggclim + ggorg + 
   plot_annotation(title = 'Site Condition Output from UVAFME')
 
-
-png(filename = "Veg_output.png", width = 10, height = 7, res = 300, 
-    units = 'in')
-p1
-dev.off()
-
-png(filename = "Site_output.png", width = 10, height = 7, res = 300, 
-    units = 'in')
-p2
-dev.off()
