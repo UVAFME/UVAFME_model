@@ -1,6 +1,11 @@
 .DS_Store
-src/*mod
-src/*o
-users_manual/*
-sample_inputs/output_data_sample/*
-sample_inputs/UVAFME_v1_NABoreal
+*mod
+*o
+*blg
+*log
+*out
+*synctex.gz
+*toc
+*bbl
+*log
+*aux
