@@ -6,6 +6,7 @@ module Random
   !
 !*******************************************************************************
 
+    use FileUtils
     implicit none
 
     ! Data dictionary: global variables
@@ -85,7 +86,7 @@ contains
         ! Data dictionary: calling arguments
         real, optional, intent(in) :: mean ! Input mean
         real, optional, intent(in) :: std  ! Optional standard deviation
-         real, optional, intent(in) :: seed ! Optional input RNG seed
+        real, optional, intent(in) :: seed ! Optional input RNG seed
 
         ! Data dictionary: local variables
         integer :: iseed ! Local seed
@@ -226,9 +227,9 @@ contains
 
         ! Check to make sure j is in the correct range
         j = 1 + (97*ix3)/M3
-        if (j .gt. 97 .or. j .lt. 1) then
+        if (j > 97 .or. j < 1) then
             j = 97
-            write(*, *) 'Error in climate RNG'
+            write(logf, *) 'Error in climate RNG'
         else
             ran1 = r(j)
             r(j) = (real(ix1) + real(ix2)*rm2)*rm1
@@ -348,7 +349,7 @@ contains
                     call get_random_seed(iseed)
 
                     ! Calculate actual seed value
-                    if (iseed .ne. 0) then
+                    if (iseed /= 0) then
                         iseed = iseed*idate(8) ! idate(8) = milliseconds
                     else
                         ! If it's 0 somehow, use the default seed

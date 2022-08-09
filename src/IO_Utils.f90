@@ -68,7 +68,7 @@ contains
             inquire(file = filelist, exist = file_exists)
 
             if (.not. file_exists) then
-                write(message, '(A, A)') "Can't file specified file list: ",   &
+                write(message, '(A, A)') "Can't find specified file list: ",   &
                     filelist
                call fatal_error(message)
             else
@@ -76,9 +76,9 @@ contains
                 nunit = unit_number()
                 open(nunit, file = filelist, status = 'unknown',               &
                     iostat = ios)
-                if (ios .eq. 0) then
+                if (ios == 0) then
                     read(nunit, filenames, iostat = ios)
-                    if (ios .ne. 0) then
+                    if (ios /= 0) then
                         write(message, '(A, A)') "Error reading ", filelist
                         call fatal_error(message)
                     end if
@@ -130,7 +130,7 @@ contains
         rt_file = open_file(pathname, 'r')
 
         ! If can't find runtime file, set to defaults
-        if (rt_file .eq. INVALID) then
+        if (rt_file == INVALID) then
             call warning('Unable to open runtime (parameter) file.')
             call warning('Using all default values.')
         endif
@@ -151,7 +151,6 @@ contains
         !                                       reduce copy pasta
 
         ! Data dictionary: local variables
-        character(len = MAX_FILE) :: filename ! File name
         character(len = MAX_PATH) :: pathname ! Full path to file
 
         ! Get current working directory
@@ -165,7 +164,6 @@ contains
         ! Site list
         call open_and_check('_sitelist.csv', slistdir, slist, 1, 'site-list')
 
-
         ! Species attributes file
         call open_and_check('_specieslist.csv', splistdir, splist, 1,          &
             'species-list')
@@ -176,14 +174,18 @@ contains
         ! Climate file
         call open_and_check('_climate.csv', climatedir, cfile, 1, 'climate')
 
-
         ! Extra climate file (cld, rh, wind)
         call open_and_check('_climate_ex.csv', climatedir, cexfile, 1,         &
             'extra climate')
 
+        ! Lightning file
+        call open_and_check('_lightning.csv', climatedir, lightfile, 1,        &
+            'lightning')
+
         ! Litter parameters
         call open_and_check('_litterpars.csv', sitedir, litterfile, 1,         &
             'litter')
+
 
         if (use_climstd) then
             ! Climate standard deviation
@@ -195,12 +197,14 @@ contains
                 cexstdfile, 1, 'extra climate stddev')
         end if
 
-
         ! Climate change data from input file
         if (use_gcm) then
             ! Climate input
             call open_and_check('_climate_GCM.csv', GCMdir, cgcmfile, 1, 'GCM')
 
+            ! Lightning climate change
+            call open_and_check('_lightning_GCM.csv', GCMdir, cgclightfile,    &
+                1, 'lightning GCM')
         endif
 
         ! Rangelist file
@@ -245,7 +249,7 @@ contains
 
         ! Open file
         fileunit = open_file(pathname, 'r')
-        if (fileunit .eq. INVALID) then
+        if (fileunit == INVALID) then
             write(message, '(A,A)') "Unable to find ", name, " file."
             call fatal_error(message)
         endif
@@ -332,6 +336,26 @@ contains
             pl_tree = open_file(pathname)
         end if
 
+        ! Testing files
+        if (testing) then
+            call build_pathname(outputdir, 'Fuel_Conds.csv', pathname)
+            fuel_conds = open_file(pathname)
+
+            call build_pathname(outputdir, 'Fire_Conds.csv', pathname)
+            dayfire = open_file(pathname)
+
+            call build_pathname(outputdir, 'Cons_Data.csv', pathname)
+            cons_out = open_file(pathname)
+
+        end if
+
+        if (reg_testing) then
+
+            call build_pathname(outputdir, 'Spec_Regen.csv', pathname)
+            spec_regen = open_file(pathname)
+
+        end if
+
     end subroutine open_outputFiles
 
     !:.........................................................................:
@@ -358,6 +382,26 @@ contains
         call csv_write(soildecomp, 'active', .false.)
         call csv_write(soildecomp, 'OM', .false.)
         call csv_write(soildecomp, 'OM_N', .false.)
+        call csv_write(soildecomp, 'flit_cornus', .false.)
+        call csv_write(soildecomp, 'flit_acerfrax', .false.)
+        call csv_write(soildecomp, 'flit_prunus', .false.)
+        call csv_write(soildecomp, 'flit_betula', .false.)
+        call csv_write(soildecomp, 'flit_queralba', .false.)
+        call csv_write(soildecomp, 'flit_tsugthuj', .false.)
+        call csv_write(soildecomp, 'flit_populus', .false.)
+        call csv_write(soildecomp, 'flit_fagus', .false.)
+        call csv_write(soildecomp, 'flit_querrubr', .false.)
+        call csv_write(soildecomp, 'flit_abies', .false.)
+        call csv_write(soildecomp, 'flit_picea', .false.)
+        call csv_write(soildecomp, 'flit_pinus', .false.)
+        call csv_write(soildecomp, 'flit_roots', .false.)
+        call csv_write(soildecomp, 'flit_smboles', .false.)
+        call csv_write(soildecomp, 'flit_lboles', .false.)
+        call csv_write(soildecomp, 'flit_twigs', .false.)
+        call csv_write(soildecomp, 'flit_smbranch', .false.)
+        call csv_write(soildecomp, 'flit_lbranch', .false.)
+        call csv_write(soildecomp, 'flit_WDW', .false.)
+        call csv_write(soildecomp, 'flit_moss', .false.)
         call csv_write(soildecomp, 'lit_cornus', .false.)
         call csv_write(soildecomp, 'lit_acerfrax', .false.)
         call csv_write(soildecomp, 'lit_prunus', .false.)
@@ -392,6 +436,7 @@ contains
         call csv_write(clim_unit, 'avail_n', .false.)
         call csv_write(clim_unit, 'aet', .false.)
         call csv_write(clim_unit, 'grow', .false.)
+        call csv_write(clim_unit, 'pc_germ', .false.)
         call csv_write(clim_unit, 'degd', .false.)
         call csv_write(clim_unit, 'drydays', .false.)
         call csv_write(clim_unit, 'saw0_ByFC', .false.)
@@ -431,6 +476,7 @@ contains
         call csv_write(biom_by_g, 'drought_resp', .false.)
         call csv_write(biom_by_g, 'shade_resp', .false.)
         call csv_write(biom_by_g, 'perm_resp', .false.)
+        call csv_write(biom_by_g, 'flood_resp', .false.)
         call csv_write(biom_by_g, 'nutrient_resp', .false.)
         call csv_write(biom_by_g, 'max_diam', .false.)
         call csv_write(biom_by_g, 'mean_diam', .false.)
@@ -490,6 +536,7 @@ contains
         call csv_write(biom_by_s, 'drought_resp', .false.)
         call csv_write(biom_by_s, 'shade_resp', .false.)
         call csv_write(biom_by_s, 'perm_resp', .false.)
+        call csv_write(biom_by_s, 'flood_resp', .false.)
         call csv_write(biom_by_s, 'nutrient_resp', .false.)
         call csv_write(biom_by_s, 'max_diam', .false.)
         call csv_write(biom_by_s, 'mean_diam', .false.)
@@ -527,8 +574,10 @@ contains
         call csv_write(dead_s, 'drought_death', .false.)
         call csv_write(dead_s, 'shade_death', .false.)
         call csv_write(dead_s, 'perm_death', .false.)
+        call csv_write(dead_s, 'flood_death', .false.)
         call csv_write(dead_s, 'nutrient_death', .false.)
         call csv_write(dead_s, 'fire_death', .false.)
+        call csv_write(dead_s, 'harv_death', .false.)
         call csv_write(dead_s, 'wind_death', .false.)
         call csv_write(dead_s, 'mean_diam', .false.)
         call csv_write(dead_s, 'total_biomC', .false.)
@@ -543,8 +592,10 @@ contains
         call csv_write(dead_g, 'drought_death', .false.)
         call csv_write(dead_g, 'shade_death', .false.)
         call csv_write(dead_g, 'perm_death', .false.)
+        call csv_write(dead_g, 'flood_death', .false.)
         call csv_write(dead_g, 'nutrient_death', .false.)
         call csv_write(dead_g, 'fire_death', .false.)
+        call csv_write(dead_g, 'harv_death', .false.)
         call csv_write(dead_g, 'wind_death', .false.)
         call csv_write(dead_g, 'mean_diam', .false.)
         call csv_write(dead_g, 'total_biomC', .false.)
@@ -558,24 +609,35 @@ contains
         call csv_write(plotvals, 'drought_death', .false.)
         call csv_write(plotvals, 'shade_death', .false.)
         call csv_write(plotvals, 'perm_death', .false.)
+        call csv_write(plotvals, 'flood_death', .false.)
         call csv_write(plotvals, 'nutrient_death', .false.)
         call csv_write(plotvals, 'fire_death', .false.)
+        call csv_write(plotvals, 'harvest_death', .false.)
         call csv_write(plotvals, 'wind_death', .false.)
         call csv_write(plotvals, 'gddresp_1', .false.)
         call csv_write(plotvals, 'gddresp_2', .false.)
         call csv_write(plotvals, 'gddresp_3', .false.)
+        call csv_write(plotvals, 'gddresp_4', .false.)
         call csv_write(plotvals, 'droughtresp_1', .false.)
         call csv_write(plotvals, 'droughtresp_2', .false.)
         call csv_write(plotvals, 'droughtresp_3', .false.)
+        call csv_write(plotvals, 'droughtresp_4', .false.)
         call csv_write(plotvals, 'shaderesp_1', .false.)
         call csv_write(plotvals, 'shaderesp_2', .false.)
         call csv_write(plotvals, 'shaderesp_3', .false.)
+        call csv_write(plotvals, 'shaderesp_4', .false.)
         call csv_write(plotvals, 'permresp_1', .false.)
         call csv_write(plotvals, 'permresp_2', .false.)
         call csv_write(plotvals, 'permresp_3', .false.)
+        call csv_write(plotvals, 'permresp_4', .false.)
+        call csv_write(plotvals, 'floodresp_1', .false.)
+        call csv_write(plotvals, 'floodresp_2', .false.)
+        call csv_write(plotvals, 'floodresp_3', .false.)
+        call csv_write(plotvals, 'floodresp_4', .false.)
         call csv_write(plotvals, 'nutrientresp_1', .false.)
         call csv_write(plotvals, 'nutrientresp_2', .false.)
         call csv_write(plotvals, 'nutrientresp_3', .false.)
+        call csv_write(plotvals, 'nutrientresp_4', .false.)
         call csv_write(plotvals, 'Loreys_height', .false.)
         call csv_write(plotvals, 'Loreys_height_sd', .false.)
         call csv_write(plotvals, 'max_height', .false.)
@@ -690,9 +752,10 @@ contains
            call csv_write(dead_ps, 'drought_death', .false.)
            call csv_write(dead_ps, 'shade_death', .false.)
            call csv_write(dead_ps, 'perm_death', .false.)
+           call csv_write(dead_ps, 'flood_death', .false.)
            call csv_write(dead_ps, 'nutrient_death', .false.)
-           call csv_write(dead_ps, 'fire_death', .false.)
            call csv_write(dead_ps, 'wind_death', .false.)
+           call csv_write(dead_ps, 'harv_death', .false.)
            call csv_write(dead_ps, 'mean_diam', .false.)
            call csv_write(dead_ps, 'total_biomC', .true.)
 
@@ -706,8 +769,10 @@ contains
            call csv_write(dead_pg, 'drought_death', .false.)
            call csv_write(dead_pg, 'shade_death', .false.)
            call csv_write(dead_pg, 'perm_death', .false.)
+           call csv_write(dead_pg, 'flood_death', .false.)
            call csv_write(dead_pg, 'nutrient_death', .false.)
            call csv_write(dead_pg, 'fire_death', .false.)
+           call csv_write(dead_pg, 'harv_death', .false.)
            call csv_write(dead_pg, 'wind_death', .false.)
            call csv_write(dead_pg, 'mean_diam', .false.)
            call csv_write(dead_pg, 'total_biomC', .true.)
@@ -721,6 +786,7 @@ contains
             call csv_write(pl_tree, 'plot', .false.)
             call csv_write(pl_tree, 'genus', .false.)
             call csv_write(pl_tree, 'species', .false.)
+            call csv_write(pl_tree, 'treeID', .false.)
             call csv_write(pl_tree, 'row', .false.)
             call csv_write(pl_tree, 'col', .false.)
             call csv_write(pl_tree, 'age', .false.)
@@ -735,9 +801,177 @@ contains
             call csv_write(pl_tree, 'drought_resp', .false.)
             call csv_write(pl_tree, 'shade_resp', .false.)
             call csv_write(pl_tree, 'perm_resp', .false.)
+            call csv_write(pl_tree, 'flood_resp', .false.)
             call csv_write(pl_tree, 'nutrient_resp', .true.)
         endif
 
+
+
+        ! Testing files
+        if (reg_testing) then
+
+            ! Species regeneration
+            call csv_write(spec_regen, 'siteID', .false.)
+            call csv_write(spec_regen, 'ip', .false.)
+            call csv_write(spec_regen, 'year', .false.)
+            call csv_write(spec_regen, 'probsum', .false.)
+            call csv_write(spec_regen, 'probsum_shrub', .false.)
+            call csv_write(spec_regen, 'species', .false.)
+            call csv_write(spec_regen, 'seedling', .false.)
+            call csv_write(spec_regen, 'seedbank', .false.)
+            call csv_write(spec_regen, 'fc_gdd', .false.)
+            call csv_write(spec_regen, 'fc_nutr', .false.)
+            call csv_write(spec_regen, 'fc_drought', .false.)
+            call csv_write(spec_regen, 'fc_flood', .false.)
+            call csv_write(spec_regen, 'fc_perm', .false.)
+            call csv_write(spec_regen, 'con_light', .false.)
+            call csv_write(spec_regen, 'dec_light', .false.)
+            call csv_write(spec_regen, 'regrowth', .true.)
+
+        end if
+
+        if (testing) then
+
+            ! Fuel conditions
+            call csv_write(fuel_conds, 'siteID', .false.)
+            call csv_write(fuel_conds, 'plot', .false.)
+            call csv_write(fuel_conds, 'year', .false.)
+            call csv_write(fuel_conds, 'day', .false.)
+            call csv_write(fuel_conds, 'fuel_sum', .false.)
+            call csv_write(fuel_conds, 'fuel_dec', .false.)
+            call csv_write(fuel_conds, 'fuel_con', .false.)
+            call csv_write(fuel_conds, 'fuel_twig', .false.)
+            call csv_write(fuel_conds, 'fuel_smbr', .false.)
+            call csv_write(fuel_conds, 'fuel_lgbr', .false.)
+            call csv_write(fuel_conds, 'fuel_bole', .false.)
+            call csv_write(fuel_conds, 'fuel_moss', .false.)
+            call csv_write(fuel_conds, 'fuel_dmoss', .false.)
+            call csv_write(fuel_conds, 'fuel_root', .false.)
+            call csv_write(fuel_conds, 'fuel_shrub', .false.)
+            call csv_write(fuel_conds, 'BD_dec', .false.)
+            call csv_write(fuel_conds, 'BD_con', .false.)
+            call csv_write(fuel_conds, 'BD_twig', .false.)
+            call csv_write(fuel_conds, 'BD_smbr', .false.)
+            call csv_write(fuel_conds, 'BD_lgbr', .false.)
+            call csv_write(fuel_conds, 'BD_bole', .false.)
+            call csv_write(fuel_conds, 'BD_moss', .false.)
+            call csv_write(fuel_conds, 'BD_dmoss', .false.)
+            call csv_write(fuel_conds, 'BD_root', .false.)
+            call csv_write(fuel_conds, 'BD_shrub', .false.)
+            call csv_write(fuel_conds, 'SAV_dec', .false.)
+            call csv_write(fuel_conds, 'SAV_con', .false.)
+            call csv_write(fuel_conds, 'SAV_twig', .false.)
+            call csv_write(fuel_conds, 'SAV_smbr', .false.)
+            call csv_write(fuel_conds, 'SAV_lgbr', .false.)
+            call csv_write(fuel_conds, 'SAV_bole', .false.)
+            call csv_write(fuel_conds, 'SAV_moss', .false.)
+            call csv_write(fuel_conds, 'SAV_dmoss', .false.)
+            call csv_write(fuel_conds, 'SAV_root', .false.)
+            call csv_write(fuel_conds, 'SAV_shrub', .false.)
+            call csv_write(fuel_conds, 'moist_dec', .false.)
+            call csv_write(fuel_conds, 'moist_con', .false.)
+            call csv_write(fuel_conds, 'moist_twig', .false.)
+            call csv_write(fuel_conds, 'moist_smbr', .false.)
+            call csv_write(fuel_conds, 'moist_lgbr', .false.)
+            call csv_write(fuel_conds, 'moist_bole', .false.)
+            call csv_write(fuel_conds, 'moist_moss', .false.)
+            call csv_write(fuel_conds, 'moist_dmoss', .false.)
+            call csv_write(fuel_conds, 'moist_root', .false.)
+            call csv_write(fuel_conds, 'moist_shrub', .false.)
+            call csv_write(fuel_conds, 'mef_dec', .false.)
+            call csv_write(fuel_conds, 'mef_con', .false.)
+            call csv_write(fuel_conds, 'mef_twig', .false.)
+            call csv_write(fuel_conds, 'mef_smbr', .false.)
+            call csv_write(fuel_conds, 'mef_lgbr', .false.)
+            call csv_write(fuel_conds, 'mef_bole', .false.)
+            call csv_write(fuel_conds, 'mef_moss', .false.)
+            call csv_write(fuel_conds, 'mef_dmoss', .false.)
+            call csv_write(fuel_conds, 'mef_root', .false.)
+            call csv_write(fuel_conds, 'mef_shrub', .false.)
+            call csv_write(fuel_conds, 'sumlit_moist', .false.)
+            call csv_write(fuel_conds, 'sumlit_SAV', .false.)
+            call csv_write(fuel_conds, 'sumlit_BD', .false.)
+            call csv_write(fuel_conds, 'MEF', .true.)
+
+            call csv_write(dayfire, 'siteID', .false.)
+            call csv_write(dayfire, 'plot', .false.)
+            call csv_write(dayfire, 'year', .false.)
+            call csv_write(dayfire, 'day', .false.)
+            call csv_write(dayfire, 'FDI', .false.)
+            call csv_write(dayfire, 'ffmc', .false.)
+            call csv_write(dayfire, 'MEF', .false.)
+            call csv_write(dayfire, 'fuel_moisture', .false.)
+            call csv_write(dayfire, 'fuel_BD', .false.)
+            call csv_write(dayfire, 'fuel_SAV', .false.)
+            call csv_write(dayfire, 'fuel_dec', .false.)
+            call csv_write(dayfire, 'fuel_con', .false.)
+            call csv_write(dayfire, 'fuel_twig', .false.)
+            call csv_write(dayfire, 'fuel_smbr', .false.)
+            call csv_write(dayfire, 'fuel_lgbr', .false.)
+            call csv_write(dayfire, 'fuel_bole', .false.)
+            call csv_write(dayfire, 'fuel_moss', .false.)
+            call csv_write(dayfire, 'fuel_dmoss', .false.)
+            call csv_write(dayfire, 'fuel_root', .false.)
+            call csv_write(dayfire, 'fuel_shrub', .false.)
+            call csv_write(dayfire, 'Uf', .false.)
+            call csv_write(dayfire, 'A', .false.)
+            call csv_write(dayfire, 'beta', .false.)
+            call csv_write(dayfire, 'beta_op', .false.)
+            call csv_write(dayfire, 'beta_frac', .false.)
+            call csv_write(dayfire, 'rVol_max', .false.)
+            call csv_write(dayfire, 'rVol_opt', .false.)
+            call csv_write(dayfire, 'n_M', .false.)
+            call csv_write(dayfire, 'net_fuel', .false.)
+            call csv_write(dayfire, 'I_r', .false.)
+            call csv_write(dayfire, 'flux_rat', .false.)
+            call csv_write(dayfire, 'phi_wind', .false.)
+            call csv_write(dayfire, 'Qig', .false.)
+            call csv_write(dayfire, 'rosf', .false.)
+            call csv_write(dayfire, 'a_f', .false.)
+            call csv_write(dayfire, 'burn_dec', .false.)
+            call csv_write(dayfire, 'burn_con', .false.)
+            call csv_write(dayfire, 'burn_twig', .false.)
+            call csv_write(dayfire, 'burn_smbr', .false.)
+            call csv_write(dayfire, 'burn_lgbr', .false.)
+            call csv_write(dayfire, 'burn_bole', .false.)
+            call csv_write(dayfire, 'burn_moss', .false.)
+            call csv_write(dayfire, 'burn_dmoss', .false.)
+            call csv_write(dayfire, 'burn_root', .false.)
+            call csv_write(dayfire, 'burn_shrub', .false.)
+            call csv_write(dayfire, 'I_surf', .false.)
+            call csv_write(dayfire, 'tau_l', .true.)
+
+            call csv_write(cons_out, 'siteID', .false.)
+            call csv_write(cons_out, 'ip', .false.)
+            call csv_write(cons_out, 'year', .false.)
+            call csv_write(cons_out, 'dmc', .false.)
+            call csv_write(cons_out, 'duff_moist', .false.)
+            call csv_write(cons_out, 'rfs', .false.)
+            call csv_write(cons_out, 'N_cons', .false.)
+            call csv_write(cons_out, 'consRoot', .false.)
+            call csv_write(cons_out, 'emis', .false.)
+            call csv_write(cons_out, 't_r', .false.)
+            call csv_write(cons_out, 'duff_cons', .false.)
+            call csv_write(cons_out, 'hum_avail', .false.)
+            call csv_write(cons_out, 'pre_depth', .false.)
+            call csv_write(cons_out, 'O_depth', .false.)
+            call csv_write(cons_out, 'hum_combust', .false.)
+            call csv_write(cons_out, 'bg_combust', .false.)
+            call csv_write(cons_out, 'agw_combust', .false.)
+            call csv_write(cons_out, 'agw_prefire', .false.)
+            call csv_write(cons_out, 'not_burn', .false.)
+            call csv_write(cons_out, 'canopy_bd', .false.)
+            call csv_write(cons_out, 'canopy_bh', .false.)
+            call csv_write(cons_out, 'canopy_biom', .false.)
+            call csv_write(cons_out, 'R_a', .false.)
+            call csv_write(cons_out, 'rosf_active', .false.)
+            call csv_write(cons_out, 'CFB', .false.)
+            call csv_write(cons_out, 'R_final', .false.)
+            call csv_write(cons_out, 'I_final', .false.)
+            call csv_write(cons_out, 'abcombust', .false.)
+            call csv_write(cons_out, 'bgr_combust', .true.)
+
+        end if
 
     end subroutine write_headers
 
@@ -788,6 +1022,21 @@ contains
 
         inquire(pl_tree, opened = isopen)
         if (isopen) close(pl_tree)
+
+        inquire(fuel_conds, opened = isopen)
+        if (isopen) close(fuel_conds)
+
+        inquire(dayfire, opened = isopen)
+        if (isopen) close(dayfire)
+
+        inquire(moist_out, opened = isopen)
+        if (isopen) close(moist_out)
+
+        inquire(spec_regen, opened = isopen)
+        if (isopen) close(spec_regen)
+
+        inquire(mclimfile, opened = isopen)
+        if (isopen) close(mclimfile)
 
     end subroutine close_outputFiles
 

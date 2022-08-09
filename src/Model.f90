@@ -32,6 +32,8 @@ module Model
 
     implicit none
 
+    ! Data dictionary: constants
+    real, parameter :: MIN_HT = 1.83 ! Minimum height for "canopy" fuels (m)
 
 contains
 
@@ -54,16 +56,17 @@ contains
         !
 
         ! Data dictionary: constants
-        real,    parameter    :: MIN_GROW_TEMP = 5.0   ! Minimum temperature for growing season (degC)
-        real,    parameter    :: MAX_DRY_PARM = 1.0001 ! Threshold for below wilting point
-        real,    parameter    :: DRY_THRESH = 0.8      ! Threshold for droughty conditions
-        real,    parameter    :: MIN_FLOOD_PARM = 0.8  ! Threshold for flooded conditions
-        integer, parameter    :: N_MEM = 3             ! Number of days to calculate temperature "memory"
+        real,    parameter :: MIN_GROW_TEMP = 5.0   ! Minimum temperature for growing season (degC)
+        real,    parameter :: MAX_DRY_PARM = 1.0001 ! Threshold for below wilting point
+        real,    parameter :: DRY_THRESH = 0.7      ! Threshold for droughty conditions
+        real,    parameter :: MIN_FLOOD_PARM = 0.8  ! Threshold for flooded conditions
+        real,    parameter :: MIN_MOIST_PARM = 0.75  ! Moisture index threshold
+        real,    parameter :: FIRE_THRESH = 50.0    ! Threshold intensity for self-sustaining fire (kW/m)
+        integer, parameter :: N_MEM = 3             ! Number of days to calculate temperature "memory"
 
         ! Last Julian Day in each month
         integer, dimension(12), parameter :: MODAYS = [31, 59, 90, 120, 151,   &
             181, 212, 243, 273, 304, 334, 365]
-
 
         ! Data dictionary: calling arguments
         integer,        intent(in)    :: year ! Year of simulation
@@ -78,12 +81,25 @@ contains
         real,    dimension(NTEMPS)        :: tmean          ! Monthly average temperature (deg)
         real,    dimension(NTEMPS)        :: cld            ! Monthly cloudiness (tenths of sky covered)
         real,    dimension(NTEMPS)        :: rh             ! Monthly relative humidity (%)
-        real,    dimension(NTEMPS)        :: wind           ! Monthly wind speed
         real,    dimension(NTEMPS)        :: strikes        ! Monthly lightning (strikes/km2/day)
         real,    dimension(NTEMPS)        :: tmptmin        ! Temporary variable for calculating actual tmin (degC)
         real,    dimension(NTEMPS)        :: tmptmax        ! Temporary variable for calculating actual tmax (degC)
         real,    dimension(NTEMPS)        :: tmpprec        ! Temporary variable for calculating actual prcp (cm)
         real,    dimension(NTEMPS)        :: tmpcld         ! Temporary variable for calculating actual cld (tenths of sky)
+        real,    dimension(NTEMPS)        :: tmprh          ! Temporary variable for calculating actual rh (%)
+        real,    dimension(NTEMPS)        :: tmpwind        ! Temporary variable for calculating actual wind (m/s)
+        real,    dimension(NTEMPS)        :: tmpstrikes     ! Temporary variable for calculating actual
+                                                            ! lightning (strikes/km2/day)
+        real,    dimension(NTEMPS)        :: wind           ! Monthly wind speed (m/s)
+        real,    dimension(NTEMPS)        :: solrad         ! Monthly solar radiation
+        real,    dimension(NTEMPS)        :: soilW          ! Monthly soil moisture
+        real,    dimension(NTEMPS)        :: soilI          ! Monthly soil ice content
+        real,    dimension(NTEMPS)        :: alt            ! Monthly active layer thickness
+        real,    dimension(DAYS_PER_YEAR) :: daywind        ! Daily wind speed (m/s)
+        real,    dimension(DAYS_PER_YEAR) :: dayRH          ! Daily relative humidity (%)
+        real,    dimension(DAYS_PER_YEAR) :: daystrikes     ! Daily relative lightning (strikes/km2/day)
+        real,    dimension(DAYS_PER_YEAR) :: ffmc           ! Daily fine fuel moisture code
+        real,    dimension(DAYS_PER_YEAR) :: dmc            ! Daily duff moisture code
         real,    dimension(DAYS_PER_YEAR) :: daytemp        ! Daily temperature (degC)
         real,    dimension(DAYS_PER_YEAR) :: daytemp_min    ! Daily minimum temperature (degC)
         real,    dimension(DAYS_PER_YEAR) :: daytemp_max    ! Daily maximum temperature (degC)
@@ -93,12 +109,19 @@ contains
         real,    dimension(DAYS_PER_YEAR) :: st             ! Horizontal surface solar radiation (cal/cm2/day)
         real,    dimension(DAYS_PER_YEAR) :: exrad          ! Top of atmosphere solar radiation (cal/cm2/day)
         real,    dimension(DAYS_PER_YEAR) :: pot_ev_day     ! Potential evapotranspiration (cm)
+        real,    dimension(DAYS_PER_YEAR) :: solar_rad_day  ! Solar radiation (cal/cm2/day)
+        real,    dimension(DAYS_PER_YEAR) :: soilW_day      ! Daily soil liquid moisture (volumetric)
+        real,    dimension(DAYS_PER_YEAR) :: soilI_day      ! Daily soil ice content (volumetric)
+        real,    dimension(DAYS_PER_YEAR) :: alt_day        ! Daily active layer thickness (m)
         character(len = MAX_CHAR)         :: message        ! Error message
         real                              :: rain           ! Annual precipitation (cm)
         real                              :: rain_n         ! Annual N deposition (tN)
         real                              :: temp_f         ! Factor for creating temperature randomness
         real                              :: prcp_f         ! Factor for creating precipitation randomness
         real                              :: cld_f          ! Factor for creating cloud cover randomness
+        real                              :: rh_f           ! Factor for creating relative humidity randomness
+        real                              :: wnd_f          ! Factor for creating wind speed randomness
+        real                              :: strike_f       ! Factor for creating lightning randomness
         real                              :: temp_max       ! Maximum temperature of warmest month (degC)
         real                              :: temp_min       ! Mininum temperature of warmest month (degC)
         real                              :: daytemp_mem    ! Average temperature over last N_MEM days
@@ -111,10 +134,12 @@ contains
         real                              :: aet_mm         ! Annual actual evapotranspiration (mm)
         real                              :: growdays       ! Growing season length (days)
         real                              :: soildays       ! Soil degree-days (>0degC)
-        real                              :: flooddays      ! Proportion of growing season with flooded conditions
+        real                              :: moistdays      ! Moisture index
         real                              :: wpdays         ! Proportion of growing season below wilting point
         real                              :: drydays        ! Proportion of growing season with drought conditions
+        real                              :: flooddays      ! Proportion of growing season with flooded conditiosn
         real                              :: degday         ! Growing degree-days (>5degC)
+        real                              :: atm_days       ! Proportion of growing season with atm. demand > supply
         real                              :: outwater       ! Runoff (cm)
         real                              :: tot_sun        ! Annual surface solar radiation (cal/cm2/day)
         real                              :: tot_st         ! Annual horizontal surface solar radiation (cal/cm2/day)
@@ -138,17 +163,26 @@ contains
         real                              :: tmpstep1       ! Temporary variable for implementing linear climate change
         real                              :: tmpstep2       ! Temporary variable for implementing linear climate change
         real                              :: tmp            ! Temporary variable for implementing linear climate change
+        real                              :: FDI            ! Fire Danger Index (0-1)
+        real                              :: rosf           ! Rate of forward spread of fire (m/min)
+        real                              :: I_surf         ! Surface fire intensity (kW/m)
+        real                              :: tau_l          ! Residence time of fire (min)
+        real                              :: ign_prob       ! Probability of an ignition event
+        real                              :: rand           ! Random number (uniform)
+        real                              :: tmp_sum        ! Temporary variable for calculating atm. demand
         integer                           :: gcm_year       ! Year of climate change simulation
         integer                           :: siteid         ! Site ID
         integer                           :: warmest_month  ! Warmest month
         integer                           :: hrise          ! Hour of sunrise
         integer                           :: i, j, m, ip    ! Looping indices
         integer                           :: l
+        logical                           :: strike         ! Do we have a strike event?
 
         ! Initialize accumulators
         rain = 0.0
         rain_n = 0.0
         tmean_max = RNVALID
+        site%plots(:)%fire = 0
 
         ! Set site ID - in case we need to warn user
         siteid = site%site_id
@@ -157,7 +191,7 @@ contains
         ! The user is expected to input decr_by values as positive
         if (linear_cc) then
             ! Using linear climate change
-            if (year .ge. site%gcm_year .and. year .le.                        &
+            if (year >= site%gcm_year .and. year <=                            &
                 (site%gcm_year + gcm_duration)) then
                 site%accum_tmin = site%accum_tmin + tmin_change
                 site%accum_tmax = site%accum_tmax + tmax_change
@@ -168,21 +202,25 @@ contains
                 end do
             endif
         else if (use_gcm) then
-
             ! Using climate change from input file - figure out which year
             ! we are in the file
             gcm_year = start_gcm + year - site%gcm_year
-            if (gcm_year .ge. start_gcm .and. gcm_year .le. end_gcm) then
+            if (gcm_year >= start_gcm .and. gcm_year <= end_gcm) then
 
                 ! Read in climate change data
                 call read_gcm_climate(site%site_id, gcm_year, start_gcm, tmin, &
                     tmax, prcp)
 
-                if (site%site_id .ne. INVALID) then
+                call read_gcm_lightning(site%site_id, gcm_year, start_gcm,     &
+                    strikes)
+
+                if (site%site_id /= INVALID) then
                     ! Update climate values
                     site%tmin = tmin
                     site%tmax = tmax
                     site%precip = prcp*MM_TO_CM
+                  !  site%rh = rh
+                    site%strikes = strikes
 
                     ! Readjust for altitude if needed
                     if (adjust_altitude) then
@@ -196,7 +234,7 @@ contains
                     call warning(message)
                 end if
             endif
-        endif
+		endif
 
         ! Generate current year's weather from distributions of input climate
         ! data
@@ -207,95 +245,236 @@ contains
                 tmptmax(i) = site%tmax(i) + site%accum_tmax
                 tmpprec(i) = site%precip(i) + site%accum_precip(i)
                 tmpcld(i) = site%cld(i)
+                tmprh(i)   = site%rh(i)
+                tmpwind(i) = site%wind(i)
+                tmpstrikes(i) = site%strikes(i)
             else
                 tmptmin(i) = site%tmin(i)
                 tmptmax(i) = site%tmax(i)
                 tmpprec(i) = site%precip(i)
                 tmpcld(i)  = site%cld(i)
+                tmprh(i)   = site%rh(i)
+                tmpwind(i) = site%wind(i)
+                tmpstrikes(i) = site%strikes(i)
             endif
 
             ! Calculate climate fluctuations
-             temp_f = clim_nrand(0.0, 1.0)
-             prcp_f = clim_nrand(0.0, 1.0)
-             cld_f = clim_nrand(0.0, 1.0)
+            temp_f = clim_nrand(0.0, 1.0)
+            prcp_f = clim_nrand(0.0, 1.0)
+            cld_f = clim_nrand(0.0, 1.0)
+            rh_f  = clim_nrand(0.0, 1.0)
+            wnd_f = clim_nrand(0.0, 1.0)
+            strike_f = clim_nrand(0.0, 1.0)
 
             ! Adjust
             prcp_f = max(-1.0, min(prcp_f, 1.0))
-             temp_f = max(-1.0, min(temp_f, 1.0))
-             cld_f = max(-1.0, min(cld_f, 1.0))
+            temp_f = max(-1.0, min(temp_f, 1.0))
+            cld_f = max(-1.0, min(cld_f, 1.0))
+            rh_f = max(-1.0, min(rh_f, 1.0))
+            wnd_f = max(-1.0, min(wnd_f, 1.0))
+            strike_f = max(-1.0, min(strike_f, 1.0))
 
-             ! Adjust monthly climate vars with std and random numbers
-             if    (use_gcm .and. (year .ge. site%gcm_year .and. year .le.        &
-                    (site%gcm_year + gcm_duration))) then
+            ! Adjust monthly climate vars with std and random numbers
+            if (use_gcm .and. (year >= site%gcm_year .and. year <=         &
+                (site%gcm_year + gcm_duration))) then
 
                 ! Just use input values for that month for precip, temperature,
                 ! relative humidity, and lightning
                 tmin(i) = tmptmin(i)
                 tmax(i) = tmptmax(i)
                 prcp(i) = max(tmpprec(i), 0.0)
-
-                ! Adjust for std
+                rh(i) = max(tmprh(i) + rh_f*site%rh_std(i), 0.0)
+                strikes(i) = max(strikes(i), 0.0)
+                wind(i) = tmpwind(i) + wnd_f*4.0
+                if (wind(i) < 0) then
+                    wind(i) = wind(i)*(-1.0)
+                end if
                 cld(i) = max(tmpcld(i) + cld_f*site%cld_std(i), 0.0)
-
-
-             else
+            else
                 ! Adjust for std
-                 tmin(i) = tmptmin(i) + temp_f*site%tmin_std(i)
-                 tmax(i)= tmptmax(i) + temp_f*site%tmax_std(i)
+                tmin(i) = tmptmin(i) + temp_f*site%tmin_std(i)
+                tmax(i)= tmptmax(i) + temp_f*site%tmax_std(i)
 
                 ! Can't be less than 0.0
-                 cld(i) = max(tmpcld(i) + cld_f*site%cld_std(i), 0.0)
-                 prcp(i) = max(tmpprec(i) + prcp_f*site%precip_std(i), 0.0)
+                cld(i) = max(tmpcld(i) + cld_f*site%cld_std(i), 0.0)
+                prcp(i) = max(tmpprec(i) + prcp_f*site%precip_std(i), 0.0)
+                rh(i) = max(tmprh(i) + rh_f*site%rh_std(i), 0.0)
+                wind(i) = tmpwind(i) + wnd_f*4.0
+                if (wind(i) < 0) then
+                    wind(i) = wind(i)*(-1.0)
+                end if
+                strikes(i) = max(tmpstrikes(i) +                           &
+                    strike_f*site%strikes_std(i), 0.0)
+            end if
 
-             end if
+            ! Get mean monthly temperature for warmest month calculation
+            tmean(i) = (site%tmin(i) + site%tmax(i))/2.0
 
-             ! Accumulate precipitation and N deposition
-             rain = rain + prcp(i)
-             rain_n = rain_n + prcp(i)*PRCP_N
 
-             ! Get mean monthly temperature for warmest month calculation
-             tmean(i) = (site%tmin(i) + site%tmax(i))/2.0
-         end do
+            ! Accumulate precipitation and N deposition
+            rain = rain + prcp(i)
+            rain_n = rain_n + prcp(i)*PRCP_N
 
-         ! Find warmest month of this year
-         do i = 1, NTEMPS
-             tmean_max = max(tmean_max, tmean(i))
-             if (tmean_max .eq. tmean(i)) warmest_month = i
-         end do
+        end do
+
+        ! Find warmest month of this year
+        do i = 1, NTEMPS
+            tmean_max = max(tmean_max, tmean(i))
+            if (tmean_max == tmean(i)) warmest_month = i
+        end do
 
         ! Get tmax and tmin of warmest month
-         temp_max = site%tmax(warmest_month)
-         temp_min = site%tmin(warmest_month)
+        temp_max = site%tmax(warmest_month)
+        temp_min = site%tmin(warmest_month)
 
-         ! Calculate e2 and e1 (used for PET calculation)
-         e1 = esat(temp_min)
-         e2 = esat(temp_max)
+        ! Calculate e2 and e1 (used for PET calculation)
+        e1 = esat(temp_min)
+        e2 = esat(temp_max)
 
-         ! Convert monthly weather data into daily weather data
-         call cov365_state(tmin, daytemp_min)
-         call cov365_state(tmax, daytemp_max)
-         call cov365_integr(prcp, dayprecip)
-         call cov365_state(cld, daycld)
+        ! Convert monthly weather data into daily weather data
+        call cov365_state(tmin, daytemp_min)
+        call cov365_state(tmax, daytemp_max)
+        call cov365_integr(prcp, dayprecip)
+        call cov365_state(cld, daycld)
+        call cov365_state(rh, dayRH)
+        call cov365_state(wind, daywind)
+        call cov365_state(strikes, daystrikes)
 
-         ! Initialize accumulators
-         pet = 0.0
-         tot_sun = 0.0
-         tot_st = 0.0
-         m = 1
+        if (fire_on) then
 
-         ! Calculate mean daily temperature, solar radiation, and PET
-         do i = 1, DAYS_PER_YEAR
+            ! Loop to calculate FFMC and DMC
+            ! FFMC and DMC initialized at beginning of year
+            ffmc(1) = 85.0
+            dmc(1) = 6.0
+            m = 1
+            do j = 2, DAYS_PER_YEAR
+
+                if (j > MODAYS(m)) m = m + 1 ! Get correct month
+
+                ! Calculate FFMC
+                call calc_ffmc(daytemp_max(j), dayRH(j), daywind(j),           &
+                    dayprecip(j), ffmc(j-1), ffmc(j))
+
+                ! Calculate DMC
+                call calc_dmc(daytemp_max(j), dayRH(j), dayprecip(j),          &
+                    dmc(j-1), m, site%latitude, dmc(j))
+            end do
+
+            ! Loop to calculate fire conditions for each plot
+            plotloop: do ip = 1, site%numplots
+
+                ! Update fuels for fresh litter
+                call update_fuels(site%plots(ip)%soil)
+
+                ! Reset fire
+                site%plots(ip)%fire = 0
+
+                ! Calculate daily fuel conditions, rate of spread, and fire
+                ! intensity
+                dayloop: do j = 1, DAYS_PER_YEAR
+
+
+                    !check for testing conditions
+                    if (fire_testing .and. year == site%fire_year .and.        &
+                        j == site%fire_day) then
+                        strike = .true.
+                        ffmc(j) = site%fire_ffmc
+                        dmc(j) = site%fire_dmc
+                        daywind(j) = site%fire_wind
+                    else if (.not. fire_testing .and.                          &
+                        j == site%fire_day) then
+                        strike = .true.
+                    else if (.not. fire_testing .and.                          &
+                        daystrikes(j) > 0.0)  then
+                        strike = .true.
+                    else
+                        strike = .false.
+                    end if
+
+                    strikecheck: if (strike) then
+
+                        ! Get fuel conditions for each day
+                        call fuel_conditions(site%plots(ip)%soil, ffmc(j),     &
+                            dmc(j), FDI, site%site_id, ip, year, j)
+
+                        ! Probility of an ignition event
+                        if (fire_testing) then
+                            ign_prob = 1.0
+                        !else if (.not. fire_testing .and. year == 100) then
+                        !    ign_prob = 1.0
+                        else
+                            ign_prob = daystrikes(j)*FDI*0.1
+                        end if
+                        rand = urand()
+
+                        ! Check for ignition event
+                        ignite: if (rand < ign_prob) then
+                            ! Rate of spread (m/min)
+                            call rate_of_spread(site%plots(ip)%soil,           &
+                                daywind(j), ffmc(j), FDI, rosf, site%site_id,  &
+                                    ip, year, j)
+
+                            ! Surface fire intensity (kW/m)
+                            call fire_intensity(site%plots(ip)%soil, rosf,     &
+                                I_surf)
+
+                            if (fire_testing .or. I_surf >= 50.0) then
+                                ! Fire is enough to ignite and spread
+                                site%plots(ip)%fire = 1
+                                site%plots(ip)%fire_day = j
+                                site%plots(ip)%soil%dmc_fire = dmc(j)
+                                site%plots(ip)%soil%ffmc_fire = ffmc(j)
+                                site%plots(ip)%soil%wind_fire = daywind(j)
+                                exit dayloop
+                            end if
+                        end if ignite
+                    end if strikecheck
+                end do dayloop
+            end do plotloop
+        end if
+
+        ! Initialize accumulators
+        pet = 0.0
+        tot_sun = 0.0
+        tot_st = 0.0
+        site%pc_germ = 0.0
+        m = 1
+
+        ! Calculate mean daily temperature, solar radiation, and PET
+        do i = 1, DAYS_PER_YEAR
+
 
             ! Mean daily temperature (degC)
             daytemp(i) = 0.5*(daytemp_min(i) + daytemp_max(i))
 
+            ! Save these values for fire weather subroutines
+            site%maxdaytemp = daytemp_max(i)
+            site%dayprecip = dayprecip(i)
+
+            ! Calculate temperature impact on regeneration
+            if (daytemp(i) > MIN_GROW_TEMP) then ! During growing season
+
+                ! Calculate temperature "memory"
+                daytemp_mem = sum(daytemp(i-N_MEM+1:i))/float(N_MEM)
+
+                ! Calculate effect on germination
+                if (daytemp_mem <= 15.0) then
+                    pc_germ = min(1.0, max(0.0, daytemp_mem*0.1 - 0.5))
+                else
+                    pc_germ = 1.0
+                endif
+
+                ! Set to max, so we only neet to hit it once
+                site%pc_germ = max(site%pc_germ, pc_germ)
+            end if
+
             ! Calculate solar radiation (cal/cm2/day)
-            call solar_rad(i, site%latitude, site%slope, site%aspect,         &
+            call solar_rad(i, site%latitude, site%slope, site%aspect,          &
                 daycld(i), exrad(i), sun(i), st(i), hrise)
 
-            ! Accumulate surface and horizontal surface radiation
-            tot_sun = tot_sun + sun(i) ! Actual surface
-            tot_st = tot_st + st(i)    ! Horizontal surface
+             ! Accumulate surface and horizontal surface radiation
+             tot_sun = tot_sun + sun(i) ! Actual surface
+             tot_st = tot_st + st(i)    ! Horizontal surface
 
             ! Calculate PET (cm)
             pot_ev_day(i) = pot_evap(daytemp(i), sun(i), site%altitude, e2, e1)
@@ -307,12 +486,12 @@ contains
         ! Calculate ratio of actual surface to horizontal surface radiation
         cfs = tot_sun/tot_st
 
-         ! Calculate freezing and thawing degree days for permafrost subroutine
+        ! Calculate freezing and thawing degree days for permafrost subroutine
         tdd = 0.0
         fdd = 0.0
         m = 1
         do j = 1, DAYS_PER_YEAR
-            if (j .gt. MODAYS(m)) m = m + 1
+            if (j > MODAYS(m)) m = m + 1
             if (tmean(m) > epsilon(1.0) .and. daytemp(j) > epsilon(1.0)) then
                  tdd(m, 1) = tdd(m, 1) + daytemp(j)
             end if
@@ -325,17 +504,17 @@ contains
         tcum = 0.0
         fcum = 0.0
         do m = 12, 1, -1
-            if (fdd(m, 1) .gt. 0.0) fcum = fcum + fdd(m, 1)
-            if (fdd(m, 1) .eq. 0.0) exit
+             if (fdd(m, 1) > 0.0) fcum = fcum + fdd(m, 1)
+             if (fdd(m, 1) == 0.0) exit
         end do
         do m = 1, 12
-            if (tdd(m, 1) .eq. 0.0) tcum = 0.0
-            tcum = tcum + tdd(m, 1)
-            tdd(m, 2) = tcum
-            if (fdd(m, 1) .eq. 0.0) fcum = 0.0
-            fcum = fcum + fdd(m, 1)
-            fdd(m, 2) = fcum
-         end do
+             if (tdd(m, 1) == 0.0) tcum = 0.0
+             tcum = tcum + tdd(m, 1)
+             tdd(m, 2) = tcum
+             if (fdd(m, 1) == 0.0) fcum = 0.0
+             fcum = fcum + fdd(m, 1)
+             fdd(m, 2) = fcum
+        end do
 
         ! Loop through each plot to calculate soil dynamics
         do ip = 1, site%numplots
@@ -345,9 +524,11 @@ contains
             degday = 0.0
             growdays = 0.0
             soildays = 0.0
-            flooddays = 0.0
             drydays = 0.0
+            flooddays = 0.0
+            moistdays = 0.0
             outwater = 0.0
+            tmp_sum = 0.0
             wpdays = 0.0
             aow0_ByMin_sum = 0.0
             saw0_ByFC_sum = 0.0
@@ -364,15 +545,15 @@ contains
             ! Initialize depths freeze and thaw
             xmlt = 0.0
             xfrz = site%plots(ip)%soil%M_depth +                               &
-               site%plots(ip)%soil%O_depth + site%plots(ip)%soil%A_depth
+                site%plots(ip)%soil%O_depth + site%plots(ip)%soil%A_depth
 
             ! Calculate light on the forest floor
             alff = 1.0*exp(-0.25*site%plots(ip)%cla/plotsize)
 
             do l = 1, 2
-                ! Calculate drainage conditions
+               ! Calculate drainage conditions
                 site%plots(ip)%soil%z_drain(l) =                               &
-                    (site%plots(ip)%soil%sat(l)*(1.0 - amlt) +                &
+                    (site%plots(ip)%soil%sat(l)*(1.0 - amlt) +                 &
                     site%plots(ip)%soil%fc(l)*(amlt - 0.32))/(1.0 - 0.32)
 
                 ! Must be between field capacity and saturation capacity
@@ -384,14 +565,14 @@ contains
                      site%plots(ip)%soil%fc(l))
 
                 ! Set soil to fully saturated at onset of year
-                if (l .eq. 1) then
-                     site%plots(ip)%soil%wc(l) =                                &
+                if (l == 1) then
+                     site%plots(ip)%soil%wc(l) =                               &
                         site%plots(ip)%soil%z_drain(l)*H2O_D/                  &
                          site%plots(ip)%soil%O_bulk_dens
-                    zh = site%plots(ip)%soil%O_depth +                         &
+                     zh = site%plots(ip)%soil%O_depth +                        &
                         site%plots(ip)%soil%M_depth
                 else
-                    site%plots(ip)%soil%wc(l) =                                &
+                     site%plots(ip)%soil%wc(l) =                               &
                         site%plots(ip)%soil%z_drain(l)*H2O_D/                  &
                          site%plots(ip)%soil%A_bulk_dens
                      zh = site%plots(ip)%soil%A_depth
@@ -400,11 +581,9 @@ contains
                 ! Soil is completely frozen at start of year
                 site%plots(ip)%soil%H2Oice(l) =                                &
                     site%plots(ip)%soil%z_drain(l)*zh
-                site%plots(ip)%soil%water(l) = 0.0
-                site%plots(ip)%soil%d_melt(l) = 0.0
-                site%plots(ip)%soil%d_freeze(l) = zh
-                site%plots(ip)%soil%minWC = site%plots(ip)%soil%wc(2)
-
+                 site%plots(ip)%soil%water(l) = 0.0
+                 site%plots(ip)%soil%d_melt(l) = 0.0
+                 site%plots(ip)%soil%d_freeze(l) = zh
             end do
 
             ! Loop on days - thaw depths are calculated monthly so have to
@@ -412,7 +591,7 @@ contains
             m = 1
             do j = 1, DAYS_PER_YEAR
 
-                if (j .gt. MODAYS(m)) m = m + 1
+                if (j > MODAYS(m)) m = m + 1
 
                 ! Calculate freeze/thaw depths (xfrz, xmlt) and maximum depths
                 ! of freeze and thaw
@@ -427,23 +606,23 @@ contains
                     site%plots(ip)%soil%M_depth -                              &
                     site%plots(ip)%soil%O_depth), site%plots(ip)%soil%active)
 
-                 ! Calculate soil water dynamics for the day
-                call moist(site%plots(ip)%soil, site%site_id, ip, year, j,     &
-                    daytemp(j), dayprecip(j), pot_ev_day(j),                   &
-                    site%leaf_area_ind, site%slope, amlt, xmlt, xfrz, tdd, m,  &
-                    act_ev_day, aow0_ByMin, saw0_ByFC, saw0_ByWP, saw0_BySAT)
+                ! Calculate soil water dynamics for the day
+                call moist(site%plots(ip)%soil, site%site_id, ip, year, j, &
+                    daytemp(j), dayprecip(j), pot_ev_day(j),               &
+                    site%leaf_area_ind, site%slope, amlt, xmlt, xfrz, tdd, &
+                    m, act_ev_day, site%flow, aow0_ByMin, saw0_ByFC,       &
+                    saw0_ByWP, saw0_BySAT)
 
-                ! Update minimum water content for the year
-                site%plots(ip)%soil%minWC = min(site%plots(ip)%soil%minWC,     &
-                    site%plots(ip)%soil%wc(2))
 
                 ! Accumulate variables
                 outwater = outwater + site%plots(ip)%soil%runoff
                 aet = act_ev_day + aet
+                tmp = 1.0 - max(min(dayprecip(j)/pot_ev_day(j), 1.0),          &
+                    min(act_ev_day/pot_ev_day(j), 1.0))
 
                 ! Compute degday, dry days, flood days, and growing season
                 ! length (days)
-                if (daytemp(j) .ge. MIN_GROW_TEMP) then
+                if (daytemp(j) >= MIN_GROW_TEMP) then
 
                     ! Growing degree-days
                     degday = degday + (daytemp(j) - MIN_GROW_TEMP)
@@ -456,48 +635,60 @@ contains
                     saw0_BySAT_sum = saw0_BySAT_sum + saw0_BySAT
                     aow0_ByMin_sum = aow0_ByMin_sum + aow0_ByMin
 
-                    if (saw0_ByFC .lt. DRY_THRESH) then
-                        drydays = drydays + 1.0
-                     end if
-
-                    if (aow0_ByMin .lt. MAX_DRY_PARM) then
-                        wpdays = wpdays + 1.0
+                    if (saw0_BySAT > MIN_FLOOD_PARM) then
+                         flooddays = flooddays + 1.0
+                         tmp = 0.0
+                    else if (saw0_ByFC < DRY_THRESH) then
+                         drydays = drydays + 1.0
                     end if
 
-                    if (saw0_BySAT .gt. MIN_FLOOD_PARM) then
-                       flooddays = flooddays + 1.0
-                    endif
+                    if (aow0_ByMin < MAX_DRY_PARM) then
+                         wpdays = wpdays + 1.0
+                    end if
 
+                    tmp_sum = tmp_sum + tmp
                 end if
 
                 ! Accumulate soil degree-days
-                if (daytemp(j) .ge. 0.0) then
+                if (daytemp(j) >= 0.0) then
                     soildays = soildays + (daytemp(j) - 0.0)
                 end if
 
+                if (saw0_BySAT > MIN_MOIST_PARM) then
+                     moistdays = moistdays + 1.0
+                endif
+
             end do
+            moistdays = moistdays/DAYS_PER_YEAR
 
             ! Convert drydays, flooddays, and wpdays to proportion of growing
             ! season
-            if (growdays .eq. 0) then
-                drydays = 0.0
-                flooddays = 0.0
-                wpdays = 0.0
+            if (growdays == 0) then
+                 drydays = 0.0
+                 flooddays = 0.0
+                 wpdays = 0.0
+                 atm_days = 0.0
             else
-                tmp = max(min(rain/pet, 1.0), min(aet/pet, 1.0))
-                drydays = ((drydays/growdays) + (1.0 - tmp))/2.0
-                flooddays = flooddays/growdays
-                wpdays = wpdays/growdays
+                 atm_days = tmp_sum/growdays
+                 tmp = max(min(rain/pet, 1.0), min(aet/pet, 1.0))
+                 !drydays = ((drydays/growdays) + atm_days)/2.0
+                 drydays = ((drydays/growdays) + (1.0 - tmp))/2.0
+                 flooddays = flooddays/growdays
+                 wpdays = wpdays/growdays
             endif
+
+            if (flooddays >= 0.1) then
+                drydays = 0.0
+            end if
 
             ! Convert aet to mm for decomposition
             aet_mm = aet*10.0
 
-            call moss(site%plots(ip)%soil, alff, site%plots(ip)%cla,        &
+            call moss(site%plots(ip)%soil, alff, site%plots(ip)%cla,           &
                 site%plots(ip)%soil%dec_fuel, drydays, site%site_id, ip, year)
 
             call soiln(site%plots(ip)%soil, aet_mm, site%plots(ip)%cla,        &
-                soildays, flooddays, n_avail)
+                soildays, moistdays, n_avail)
 
             ! Set fan to 0.0 (used last year's fan for this year's soiln
             ! calculation)
@@ -513,21 +704,7 @@ contains
             site%plots(ip)%flood_days = flooddays
             site%plots(ip)%dry_days = drydays
             site%plots(ip)%wilt_days = wpdays
-
         end do
-
-        !calculate site's base aridity (calculated from first 10 years) and
-        !yearly aridity
-        if (year .le. 9) then
-            if (year .eq. 0) then
-                 site%aridity_base = min(rain/pet, 1.0)
-            else if (year .gt. 0 .and. year .lt. 9) then
-                 site%aridity_base = site%aridity_base + min(rain/pet, 1.0)
-            else if (year .eq. 9) then
-                 site%aridity_base = (site%aridity_base + min(rain/pet, 1.0))/10.0
-            endif
-        end if
-        site%aridity = min(rain/pet, 1.0)
 
         ! Set site-level attributes to yearly sums of climate values
         site%deg_days = degday
@@ -552,6 +729,7 @@ contains
 
         ! Data dictionary: constants
         real, parameter :: XT = -0.40      ! Light extinction coefficient
+        real, parameter :: MIN_CBD = 0.011 ! Minimum canopy bulk density (kg/m3)
 
         ! Data dictionary: calling arguments
         type(SiteData), intent(inout) :: site ! Site object
@@ -561,10 +739,17 @@ contains
         real, dimension(maxheight) :: la_con      ! Leaf area experienced by evergreen plants (m2)
         real, dimension(maxheight) :: cla_dec     ! Cumulative leaf area experienced by deciduous plants (m2)
         real, dimension(maxheight) :: cla_con     ! Cumulative leaf area experienced by evergreen plants (m2)
+        real, dimension(maxheight) :: cbiom       ! Canopy biomass (kg/m2)
         real                       :: forht       ! Tree height (m)
         real                       :: canht       ! Clear branch bole height (m)
+        real                       :: canopy_bh   ! Canopy base height
         real                       :: tla         ! Tree leaf area (m2)
         real                       :: tla_adj     ! Leaf area per 1-m height bin (m2)
+        real                       :: cbiom_adj   ! Canopy biomass per 1-m height bin (kg/m2)
+        real                       :: sum_bd      ! Sum of canopy bulk density (kg/m2)
+        real                       :: max_bd      ! Max canopy bulk density (kg/m3)
+        real                       :: max_ht      ! Maximum tree height (m)
+        real                       :: canopy_biom ! Tree canopy biomass (kg)
         integer                    :: ntrees      ! Number of trees on plot
         integer                    :: iht         ! Tree height (m)
         integer                    :: cl          ! Canopy length (m)
@@ -583,12 +768,20 @@ contains
             ! Get number of trees on plot
             ntrees = site%plots(ip)%numtrees
 
-            if (ntrees .eq. 0) then
+            if (ntrees == 0) then
 
                 ! Full light conditions and no nutrient pressure
                 site%plots(ip)%con_light = 1.0
                 site%plots(ip)%dec_light = 1.0
                 site%plots(ip)%fc_nutr = 1.0
+
+                ! No canopy biomass
+                site%plots(ip)%canopy_bd = 0.0
+                site%plots(ip)%canopy_bh = 0.0
+                sum_bd = 0.0
+                max_ht = 0.0
+                canopy_bh = 0.0
+                canopy_biom = 0.0
 
             else
 
@@ -597,20 +790,50 @@ contains
                 la_con = 0.0
                 cla_dec = 0.0
                 cla_con = 0.0
+                cbiom = 0.0
+                max_ht = 0.0
+                sum_bd = 0.0
+                canopy_bh = 0.0
 
                 do it = 1, ntrees
 
-                    ! Total tree height (m)
-                    forht = max(site%plots(ip)%trees(it)%forska_ht, 2.0)
+                    if (site%plots(ip)%trees(it)%form <= 3) then
 
-                    ! Integer of tree height (m)
-                    iht = min(int(forht), maxheight)
+                        ! Tree or tall/erect shrub
 
-                    ! Clear branch bole height (m)
-                    canht = max(site%plots(ip)%trees(it)%canopy_ht, 1.0)
+                        ! Total tree height (m)
+                        forht = max(site%plots(ip)%trees(it)%forska_ht, 1.0)
+
+                        ! Integer of tree height (m)
+                        iht = min(int(forht), maxheight)
+
+                        ! Clear branch bole height (m)
+                        canht = max(site%plots(ip)%trees(it)%canopy_ht, 1.0)
+
+                    else
+
+                        ! Erect shrub
+                        forht = 1.0
+                        iht = min(int(forht), maxheight)
+                        canht = 1.0
+
+                    end if
+
+                    ! Get tallest tree/shrub
+                    if (site%plots(ip)%trees(it)%forska_ht >= MIN_HT) then
+                        max_ht = max(max_ht, forht)
+                    end if
 
                     ! Calculate leaf area (m2)
                     tla = leaf_area(site%plots(ip)%trees(it))
+
+                    ! Calculate 1-hr canopy biomass (kg)
+                    if (site%plots(ip)%trees(it)%forska_ht >= MIN_HT) then
+                        canopy_biom = (site%plots(ip)%trees(it)%leaf_bm +      &
+                            site%plots(ip)%trees(it)%branchC)*T_TO_KG/B_TO_C
+                        else
+                            canopy_biom = 0.0
+                    end if
 
                     ! Accumulate site leaf area
                     site%leaf_area_ind = site%leaf_area_ind + tla
@@ -619,6 +842,7 @@ contains
                     ! into 1-m sections
                     cl = max(int(forht) - int(canht) + 1, 1)
                     tla_adj = tla/float(cl)
+                    cbiom_adj = canopy_biom/float(cl)
 
                     ! Fill temporary arrays with leaf area/biomass
                     if (site%plots(ip)%trees(it)%conifer) then
@@ -628,11 +852,13 @@ contains
                         do ih = int(canht), int(forht)
                             la_dec(ih) = la_dec(ih) + tla_adj
                             la_con(ih) = la_con(ih) + tla_adj
+                            cbiom(ih) = cbiom(ih) + cbiom_adj
                         end do
                     else
                         do ih = int(canht), int(forht)
                             la_dec(ih) = la_dec(ih) + tla_adj
                             la_con(ih) = la_con(ih) + tla_adj*0.8
+                            cbiom(ih) = cbiom(ih) + cbiom_adj
                         end do
                     end if
 
@@ -661,12 +887,38 @@ contains
                         plotsize)
                 end do
 
+                ! Convert canopy biomass to bulk density (kg/m3)
+                cbiom(:) = cbiom(:)/plotsize
+
+                ! Find canopy base height
+                canopy_bh = 0.0
+                do ih = 1, maxheight
+                    if (cbiom(ih) >= MIN_CBD) then
+                        canopy_bh = float(ih)
+                        exit
+                    end if
+                end do
+
+                if (canopy_bh >= 1.0) then
+                   ! Sum up bulk density
+                    sum_bd = sum(cbiom(int(canopy_bh):maxheight))
+                else
+                    sum_bd = 0.0
+                end if
+
+                max_bd = 0.0
+                do ih = 1, maxheight
+                    max_bd = max(max_bd, cbiom(ih))
+                end do
 
             end if ! end if any trees
 
             ! Save plot attributes
+            site%plots(ip)%canopy_bd = sum_bd/(max_ht - canopy_bh)
+            site%plots(ip)%canopy_bh = canopy_bh
+            site%plots(ip)%canopy_biom = canopy_biom
             site%plots(ip)%cla = cla_dec(1)
-            site%lai_array = site%lai_array + la_dec
+            site%lai_array = site%lai_array + cla_dec
 
         end do !end plot loop
 
@@ -758,6 +1010,8 @@ contains
                     site%plots(ip)%fc_gdd(is))
                 call drought_rsp(site%species(is), site%plots(ip)%dry_days,    &
                     site%plots(ip)%fc_drought(is))
+                call flood_rsp(site%species(is), site%plots(ip)%flood_days,    &
+                    site%plots(ip)%fc_flood(is))
                 call perm_rsp(site%species(is)%perm_tol,                       &
                     site%plots(ip)%soil%active, site%plots(ip)%fc_perm(is))
             end do
@@ -765,13 +1019,12 @@ contains
             ! Get number of trees
             ntrees = site%plots(ip)%numtrees
 
-            numtrees: if (ntrees .gt. 0) then
+            numtrees: if (ntrees > 0) then
 
                 stress: do it = 1, ntrees
 
                     ! Get species index and update tree
                     is = site%plots(ip)%trees(it)%species_index
-                    !call update_tree(site%plots(ip)%trees(it), site%species(is))
 
                     ! Save diameter here
                     diam(it) = site%plots(ip)%trees(it)%diam_bht
@@ -785,10 +1038,14 @@ contains
                         site%species(is)%max_diam*site%species(is)%dbh_min),   &
                         site%plots(ip)%avail_spec(is))
 
-                    if (site%plots(ip)%trees(it)%tree_age .ge.                 &
-                        site%species(is)%recr_age .and.                        &
-                        site%plots(ip)%trees(it)%diam_bht .gt. 10.0) then
-                        site%plots(ip)%mature(is) = site%plots(ip)%mature(is) + 1
+                    ! Calculate the number of reproductively active trees
+                    if (site%plots(ip)%trees(it)%diam_bht >                    &
+                        site%species(is)%min_recr_dbh .and.                    &
+                        site%plots(ip)%trees(it)%tree_age >=                   &
+                        site%species(is)%recr_age) then
+
+                        site%plots(ip)%mature(is) =                            &
+                            site%plots(ip)%mature(is) + 1
                     end if
 
                     ! Get canopy and total tree height as integers
@@ -819,7 +1076,8 @@ contains
                     call env_stress(site%plots(ip)%trees(it), shade(it),       &
                         site%plots(ip)%fc_gdd(is),                             &
                         site%plots(ip)%fc_drought(is),                         &
-                        site%plots(ip)%fc_perm(is), envstress)
+                        site%plots(ip)%fc_perm(is),                            &
+                        site%plots(ip)%fc_flood(is), envstress)
 
                     ! Increment tree diameter using potential DBH growth
                     site%plots(ip)%trees(it)%diam_bht =                        &
@@ -873,15 +1131,15 @@ contains
                 ! Calculate actual DBH growth and N used
                 grow: do it = 1, ntrees
 
-                    ! Get species index and update tree
+                    ! Get species index
                     is = site%plots(ip)%trees(it)%species_index
-                    !call update_tree(site%plots(ip)%trees(it), site%species(is))
 
                     ! Calculate environmental stress - including nutrients
                     call env_stress(site%plots(ip)%trees(it), shade(it),       &
                         site%plots(ip)%fc_gdd(is),                             &
                         site%plots(ip)%fc_drought(is),                         &
                         site%plots(ip)%fc_perm(is),                            &
+                        site%plots(ip)%fc_flood(is),                           &
                         envstress, site%plots(ip)%fc_nutr(is))
 
                     ! Calculate actual diameter increment growth
@@ -895,14 +1153,14 @@ contains
                         site%species(is)%max_age*0.1, site%species(is)%dbh_min)
 
                     ! Check for possible mortality age/growth stress mortality
-                    if (dt .le. site%species(is)%dbh_min) then
+                    if (dt <= site%species(is)%dbh_min) then
 
                         ! Diameter growth is below minimum level, increment
                         ! mortality counter
                         site%plots(ip)%trees(it)%mort_count =                  &
                             site%plots(ip)%trees(it)%mort_count + 1
 
-                        if (site%plots(ip)%trees(it)%mort_count .ge. MCOUNT) then
+                        if (site%plots(ip)%trees(it)%mort_count >= MCOUNT) then
                             ! Tree has been stressed for too many years,
                             ! turn on mortality flag
                             site%plots(ip)%trees(it)%mort_marker = .true.
@@ -958,9 +1216,9 @@ contains
 
                     end if
 
-                    ! Calculate stand age as maximum tree age
-                    site%plots(ip)%stand_age = max(site%plots(ip)%stand_age,   &
-                        site%plots(ip)%trees(it)%tree_age)
+                    ! Calculate stand age as average tree age
+                    site%plots(ip)%stand_age = site%plots(ip)%stand_age +      &
+                        site%plots(ip)%trees(it)%tree_age
 
                     ! Get updated tree height and clear branch bole height
                     ht = site%plots(ip)%trees(it)%forska_ht
@@ -969,7 +1227,8 @@ contains
 
                     ! Check for lower branch thinning
                     ! This will increase clear branch bole height
-                    branchfall: if (dt <= site%species(is)%dbh_min) then
+                    branchfall: if (dt <= site%species(is)%dbh_min             &
+                        .and. site%plots(ip)%trees(it)%form <= 2) then
 
                         ! Tree form and will drop some branches
 
@@ -1036,7 +1295,7 @@ contains
 
                             ! Tree DBH < 10 cm go into smallwood, otherwise into
                             ! large wood
-                            if (site%plots(ip)%trees(it)%diam_bht  .gt.        &
+                            if (site%plots(ip)%trees(it)%diam_bht  >        &
                                 10.0) then
                                 site%plots(ip)%soil%litter(ILBL) =             &
                                     site%plots(ip)%soil%litter(ILBL) +         &
@@ -1065,6 +1324,8 @@ contains
 
                 end do grow
 
+                site%plots(ip)%stand_age = site%plots(ip)%stand_age/site%plots(ip)%numtrees
+
             end if numtrees
 
             ! Update plot-level soil characteristics
@@ -1074,8 +1335,8 @@ contains
             site%plots(ip)%soil%avail_N = max(0.0,                             &
                 site%plots(ip)%soil%avail_N - site%plots(ip)%soil%N_used)
 
-        end do plot
 
+        end do plot
 
     end subroutine Growth
 
@@ -1094,12 +1355,12 @@ contains
         !    10/10/16     A. C. Foster        Updated for soil/plot overhaul
         !                                       and permafrost updates
         !    03/01/17     A. C. Foster        Updated for fire updates
-        !
+        !    06/10/19     A. C. Foster        Updated for SPITFIRE
 
         ! Data dictionary: constants
-        real, parameter :: SBR_RT = 0.1 ! Rate of consumption of small branches
-        real, parameter :: LBR_RT = 0.1 ! Rate of consumption of large branches
-        real, parameter :: BL_RT = 0.05 ! Rate of consumption of boles
+        real, parameter :: SBR_RT = 0.5 ! Rate of consumption of live small branches
+        real, parameter :: LBR_RT = 0.1  ! Rate of consumption of live large branches
+        real, parameter :: BL_RT = 0.05  ! Rate of consumption of live boles
 
         ! Data dictionary: calling argumnets
         type(SiteData),        intent(inout) :: site ! Site object
@@ -1113,8 +1374,6 @@ contains
         real                               :: fan              ! N volatilized by fires (tN)
         real                               :: consRoot         ! Proportion roots consumed by fire (0-1)
         real                               :: wind_prob        ! Random number for windthrow
-        real                               :: fire_prob        ! Random number for fire
-        real                               :: fire_p           ! Modified fire probability
         real                               :: biomC            ! Total tree biomass (tC)
         real                               :: leaf_bm          ! Leaf biomass (tC)
         real                               :: bcr              ! Root biomass (tC)
@@ -1125,20 +1384,34 @@ contains
         real                               :: bcbr             ! Total branch biomass (tC)
         real                               :: bcsb             ! Small branch biomass (tC)
         real                               :: bclb             ! Large branch biomass (tC)
-        real                               :: av_fuel          ! Available fuel for fire consumption
+        real                               :: ab_combust       ! Aboveground combustion (tC)
+        real                               :: bgr_combust      ! Root combustion (tC)
+        real                               :: not_burn         ! Didn't burn (tC)
+        real                               :: R_a              ! Critical active rate of spread (m/min)
+        real                               :: rosf_active      ! Active rate of spread (m/min)
+        real                               :: CFB              ! Crown fraction burnt (0-1)
+        real                               :: R_final          ! Final rate of spread (surface + crown) (m/min)
+        real                               :: I_final          ! Final fire intensity (surface + crown) (kW/m)
         integer                            :: num_species      ! Number of species on site
         integer                            :: it, ip           ! Looping indices
         integer                            :: dt               ! Counter for dead trees
         integer                            :: lt               ! Counter for live trees
+        integer                            :: ind              ! Tree array index
+        integer                            :: thin_num         ! Number of trees to thin
         integer                            :: is               ! Species index
         integer                            :: trow             ! Row of tree
         integer                            :: tcol             ! Column of tree
+        logical                            :: active_crowning  ! Active crown fire?
+        logical                            :: passive_crowning ! Passive crown fire?
         logical                            :: age_survive      ! Does tree survive age check?
         logical                            :: growth_survive   ! Does tree survive stress check?
         logical                            :: fire_survive     ! Does tree survive fire?
         logical                            :: wind_survive     ! Does tree survive windthrow?
+        logical                            :: cutting_survive  ! Does tree survive selective harvest?
+        logical                            :: sel_cut          ! Are we selective cutting?
         integer                            :: snum             ! Tree growth stressor
         integer                            :: lc               ! Litter class
+        integer                            :: i                ! Looping index
 
         ! Get number of species on site
         num_species = size(site%species)
@@ -1151,41 +1424,39 @@ contains
             NPP_loss = 0.0
             fan = 0.0
             site%plots(ip)%d_type = 0.0
+            active_crowning = .false.
+            passive_crowning = .false.
+            site%plots(ip)%soil%shrubLitter = 0.0
+            ab_combust = 0.0
+            bgr_combust = 0.0
+            not_burn = 0.0
 
-            ! Set fire and wind to 0
-            site%plots(ip)%fire = 0
+            ! Set wind to 0
             site%plots(ip)%wind = 0
 
-            ! Get random number for fire and wind throw
+            ! Get random number for wind throw
             wind_prob = urand()
-            fire_prob = urand()
 
-            !increase or decrease fire probability based on aridity
-            if (year >= 10) then
-                if (site%aridity .lt. site%aridity_base) then
-                    fire_p = site%fire_prob + ((site%aridity_base -            &
-                        site%aridity)/site%aridity_base)*site%fire_prob
-                else if (site%aridity .gt. site%aridity_base) then
-                    fire_p = site%fire_prob - ((site%aridity -                 &
-                        site%aridity_base)/site%aridity_base)*site%fire_prob
-                else
-                    fire_p = site%fire_prob
-                end if
-            else
-                fire_p = site%fire_prob
+            if (fire_on .and. site%plots(ip)%fire == 1) then
+
+                ! Check for active or passive crown fire
+                call active_passive_check(site%plots(ip)%soil,                 &
+                    site%plots(ip)%canopy_bh, site%plots(ip)%canopy_bd,        &
+                    site%plots(ip)%canopy_biom, site%plots(ip)%soil%wind_fire, &
+                    site%plots(ip)%soil%ffmc_fire, R_a, rosf_active, CFB,      &
+                    R_final, I_final, passive_crowning, active_crowning)
+
+                ! Calculate fuel consumption
+                call fuel_consumption(site%site_id, ip, year,                  &
+                    site%plots(ip)%soil, consRoot, N_cons)
+
             endif
 
-            treatments: if (fire_prob < fire_p) then
+            treatments: if (fire_on  .and. site%plots(ip)%fire == 1) then
 
                 ! We have a fire on the plot
 
                 fntrees: if (site%plots(ip)%numtrees > 0) then
-
-                    site%plots(ip)%fire = 1
-
-                    ! Calculate and consume available litter fuels
-                    call forest_fuels(site%plots(ip)%soil,                     &
-                        site%plots(ip)%dry_days, av_fuel, N_cons, consRoot)
 
                     ! Kill trees that died by fire, age, or low growth - only
                     ! copy surviving trees, rest go into soil or burn
@@ -1210,10 +1481,12 @@ contains
                             age_survive)
 
                         ! Check for fire survival
-                        call fire_survival(site%plots(ip)%trees(it), av_fuel,  &
-                            fire_survive)
+                        call fire_survival(site%plots(ip)%trees(it),           &
+                            site%plots(ip)%soil%I_surf,                        &
+                            site%plots(ip)%soil%tau_l, active_crowning,        &
+                            CFB, fire_survive)
 
-                        fdeathcheck: if (growth_survive .and.                   &
+                        fdeathcheck: if (growth_survive .and.                  &
                             age_survive .and. fire_survive) then
 
                             ! Tree survives
@@ -1227,6 +1500,16 @@ contains
                             ! Copy tree to front of list
                             call copy_tree(site%plots(ip)%trees(lt),           &
                                 site%plots(ip)%trees(it))
+
+                            if (site%plots(ip)%trees(it)%form > 0 .and.        &
+                                site%plots(ip)%trees(it)%forska_ht < MIN_HT) then
+                                ! Add up shrub live foliage and fine twigs
+                                site%plots(ip)%soil%shrubLitter =              &
+                                    site%plots(ip)%soil%shrubLitter + leaf_bm + &
+                                    site%plots(ip)%trees(it)%branchC*         &
+                                    PERC_BRANCHES(1)
+
+                            end if
 
                             ! Calculate leaf litter
                             if (site%species(is)%conifer) then
@@ -1252,6 +1535,33 @@ contains
 
                             end if
 
+                            if (site%plots(ip)%trees(it)%CK > 0.0) then
+
+                                ! Tree survived but was still damaged
+
+                                !TODO - add in damage to live trees
+                                burn = site%plots(ip)%trees(it)%leaf_bm*       &
+                                    site%plots(ip)%trees(it)%CK +              &
+                                    site%plots(ip)%trees(it)%branchC*          &
+                                    PERC_BRANCHES(1)*                          &
+                                    site%plots(ip)%trees(it)%CK +              &
+                                    site%plots(ip)%trees(it)%branchC*          &
+                                    PERC_BRANCHES(2)*                          &
+                                    site%plots(ip)%trees(it)%CK*SBR_RT +       &
+                                    site%plots(ip)%trees(it)%branchC*          &
+                                    PERC_BRANCHES(3)*                          &
+                                    site%plots(ip)%trees(it)%CK*LBR_RT +       &
+                                    site%plots(ip)%trees(it)%stemC*            &
+                                    site%plots(ip)%trees(it)%CK*BL_RT
+
+                                ab_combust = ab_combust + burn
+                                not_burn = not_burn +                          &
+                                    max((site%plots(ip)%trees(it)%biomC +      &
+                                    site%plots(ip)%trees(it)%leaf_bm) - burn,  &
+                                    0.0)
+
+                            end if
+
                         else fdeathcheck
 
                             ! Tree dies from something (need to check which)
@@ -1266,6 +1576,102 @@ contains
                             trow = site%plots(ip)%trees(it)%row
                             tcol = site%plots(ip)%trees(it)%col
                             site%plots(ip)%cells(trow, tcol) = 0
+
+                            ! Roots - fire consumption from Bonan (1989)
+                            bcr = site%plots(ip)%trees(it)%rootC
+                            burn = bcr*consRoot
+                            bgr_combust = bgr_combust + burn
+                            bcr = bcr - burn
+                            site%plots(ip)%soil%litter(IROOT) =                &
+                                site%plots(ip)%soil%litter(IROOT) + bcr/B_TO_C
+
+                            ! Accumulate volatilized N
+                            fan = fan + burn*litter_params(IROOT, 2)*          &
+                                (1.0 - N_cons)
+
+                            ! Branch biomass
+                            bcbr = site%plots(ip)%trees(it)%branchC
+
+                            ! Convert branch litter into twigs, small
+                            ! branches, and large branches (Thonicke et al. 2010)
+                            bctw = bcbr*PERC_BRANCHES(1)
+                            bcsb = bcbr*PERC_BRANCHES(2)
+                            bclb = bcbr*PERC_BRANCHES(3)
+
+                            ! Twigs
+                            burn = bctw*(site%plots(ip)%trees(it)%CK)
+                            ab_combust = ab_combust + burn
+                            not_burn = not_burn + bctw - burn
+                            bctw = bctw - burn
+                            site%plots(ip)%soil%litter(ITW) =                  &
+                                site%plots(ip)%soil%litter(ITW) + bctw/B_TO_C
+
+                            ! Accumulate volatilized N
+                            fan = fan + burn*litter_params(ITW, 2)*            &
+                                (1.0 - N_cons)
+
+                            ! Small branches
+                            burn = bcsb*(SBR_RT*site%plots(ip)%trees(it)%CK)
+                            ab_combust = ab_combust + burn
+                            not_burn = not_burn + bcsb - burn
+                            bcsb = bcsb - burn
+                            site%plots(ip)%soil%litter(ISBR) =                 &
+                                site%plots(ip)%soil%litter(ISBR) + bcsb/B_TO_C
+
+                            ! Accumulate volatilized N
+                            fan = fan + burn*litter_params(ISBR, 2)*           &
+                                (1.0 - N_cons)
+
+                            ! Large branches
+                            burn = bclb*(LBR_RT*site%plots(ip)%trees(it)%CK)
+                            ab_combust = ab_combust + burn
+                            not_burn = not_burn + bclb - burn
+                            bclb = bclb - burn
+                            site%plots(ip)%soil%litter(ILBR) =                 &
+                                site%plots(ip)%soil%litter(ILBR) + bclb/B_TO_C
+
+                            ! Accumulate volatilized N
+                            fan = fan + burn*litter_params(ILBR, 2)*           &
+                                (1.0 - N_cons)
+
+                            ! Stems
+                            bcs = site%plots(ip)%trees(it)%stemC
+                            burn = bcs*(BL_RT*site%plots(ip)%trees(it)%CK)
+                            ab_combust = ab_combust + burn
+                            not_burn = not_burn + bcs - burn
+                            bcs = bcs - burn
+
+                            ! Small boles (DBH < 10) vs. large boles
+                            if (site%plots(ip)%trees(it)%diam_bht > 10.0) then
+                                site%plots(ip)%soil%litter(ILBL) =             &
+                                    site%plots(ip)%soil%litter(ILBL) + bcs/B_TO_C
+
+                                ! Accumulate volatilized N
+                                fan = fan + burn*litter_params(ILBL, 2)*       &
+                                    (1.0 - N_cons)
+                            else
+                                site%plots(ip)%soil%litter(ISBL) =             &
+                                    site%plots(ip)%soil%litter(ISBL) +         &
+                                    bcs/B_TO_C
+
+                                ! Accumulate volatilized N
+                                fan = fan + burn*litter_params(ISBL, 2)*       &
+                                    (1.0 - N_cons)
+                            end if
+
+                            ! Leaves
+                            lc = site%species(is)%litter_class
+                            burn = leaf_bm*(site%plots(ip)%trees(it)%CK)
+                            ab_combust = ab_combust + burn
+                            not_burn = not_burn + leaf_bm - burn
+                            leaf_bm = leaf_bm - burn
+
+                            site%plots(ip)%soil%litter(lc) =                   &
+                            site%plots(ip)%soil%litter(lc) + leaf_bm/B_TO_C
+
+                            ! Accumulate volatilized N
+                            fan = fan + burn*litter_params(lc, 2)*             &
+                                (1.0 - N_cons)
 
                             ! Get most limiting growth factor
                             snum = site%plots(ip)%trees(it)%stressor
@@ -1284,96 +1690,8 @@ contains
                                 ! Update "stressor"
                                 site%plots(ip)%deadtrees(dt)%stressor = IFIRE
 
-                                ! Roots - fire consumption from Bonan (1989)
-                                bcr = site%plots(ip)%trees(it)%rootC
-                                burn = bcr*consRoot
-                                bcr = bcr - burn
-                                site%plots(ip)%soil%litter(IROOT) =            &
-                                    site%plots(ip)%soil%litter(IROOT) +        &
-                                    bcr/B_TO_C
-
-                                ! Accumulate volatilized N
-                                fan = fan + burn*litter_params(IROOT, 2)*      &
-                                    (1.0 - N_cons)
-
-                                ! Branch biomass
-                                bcbr = site%plots(ip)%trees(it)%branchC
-
-                                ! Convert branch litter into twigs, small
-                                ! branches, and large branches (Thonicke et al. 2010)
-                                bctw = bcbr*PERC_BRANCHES(1)
-                                bcsb = bcbr*PERC_BRANCHES(2)
-                                bclb = bcbr*PERC_BRANCHES(3)
-
-                                ! Twigs
-                                burn = bctw*(site%plots(ip)%trees(it)%CK)
-                                bctw = bctw - burn
-                                site%plots(ip)%soil%litter(ITW) =              &
-                                    site%plots(ip)%soil%litter(ITW) +          &
-                                    bctw/B_TO_C
-
-                                ! Accumulate volatilized N
-                                fan = fan + burn*litter_params(ITW, 2)*        &
-                                    (1.0 - N_cons)
-
-                                ! Small branches
-                                burn = bcsb*(SBR_RT*site%plots(ip)%trees(it)%CK)
-                                bcsb = bcsb - burn
-                                site%plots(ip)%soil%litter(ISBR) =             &
-                                    site%plots(ip)%soil%litter(ISBR) +         &
-                                    bcsb/B_TO_C
-
-                                ! Accumulate volatilized N
-                                fan = fan + burn*litter_params(ISBR, 2)*       &
-                                    (1.0 - N_cons)
-
-                                ! Large branches
-                                burn = bclb*(LBR_RT*site%plots(ip)%trees(it)%CK)
-                                bclb = bclb - burn
-                                site%plots(ip)%soil%litter(ILBR) =             &
-                                    site%plots(ip)%soil%litter(ILBR) +         &
-                                    bclb/B_TO_C
-
-                                ! Accumulate volatilized N
-                                fan = fan + burn*litter_params(ILBR, 2)*       &
-                                    (1.0 - N_cons)
-
-                                ! Stems
-                                bcs = site%plots(ip)%trees(it)%stemC
-                                burn = bcs*(BL_RT*site%plots(ip)%trees(it)%CK)
-                                bcs = bcs - burn
-
-                                ! Small boles (DBH < 10) vs. large boles
-                                if (site%plots(ip)%trees(it)%diam_bht          &
-                                    > 10.0) then
-                                    site%plots(ip)%soil%litter(ILBL) =         &
-                                        site%plots(ip)%soil%litter(ILBL) +     &
-                                        bcs/B_TO_C
-
-                                    ! Accumulate volatilized N
-                                    fan = fan + burn*litter_params(ILBL, 2)*   &
-                                        (1.0 - N_cons)
-                                else
-                                    site%plots(ip)%soil%litter(ISBL) =         &
-                                        site%plots(ip)%soil%litter(ISBL) +     &
-                                        bcs/B_TO_C
-
-                                    ! Accumulate volatilized N
-                                    fan = fan + burn*litter_params(ISBL, 2)*   &
-                                        (1.0 - N_cons)
-                                end if
-
-                                ! Leaves
-                                lc = site%species(is)%litter_class
-                                burn = leaf_bm*(site%plots(ip)%trees(it)%CK)
-                                leaf_bm = leaf_bm - burn
-
-                                site%plots(ip)%soil%litter(lc) =               &
-                                site%plots(ip)%soil%litter(lc) + leaf_bm/B_TO_C
-
-                                ! Accumulate volatilized N
-                                fan = fan + burn*litter_params(lc, 2)*         &
-                                    (1.0 - N_cons)
+                                ! Acumulate NPP losses
+                                NPP_loss = NPP_loss + biomC + leaf_bm
 
                             else if (.not. growth_survive .or.                 &
                                 .not. age_survive) then firecheck
@@ -1386,66 +1704,11 @@ contains
                                     site%plots(ip)%d_type(snum) +              &
                                     site%plots(ip)%trees(it)%biomC + leaf_bm
 
-                                ! Add total tree litter components to all
-                                ! litter categories
 
-                                ! Roots
-                                bcr = site%plots(ip)%trees(it)%rootC
-                                site%plots(ip)%soil%litter(IROOT) =            &
-                                    site%plots(ip)%soil%litter(IROOT) +        &
-                                    bcr/B_TO_C
-
-                                ! Branches
-                                bcbr = site%plots(ip)%trees(it)%branchC
-                                ! Convert branch litter into twigs, small
-                                ! branches, and large branches
-                                bctw = bcbr*PERC_BRANCHES(1)
-                                bcsb = bcbr*PERC_BRANCHES(2)
-                                bclb = bcbr*PERC_BRANCHES(3)
-
-                                ! Twigs
-                                site%plots(ip)%soil%litter(ITW) =              &
-                                    site%plots(ip)%soil%litter(ITW) +          &
-                                    bctw/B_TO_C
-
-                                ! Small branches
-                                site%plots(ip)%soil%litter(ISBR) =             &
-                                    site%plots(ip)%soil%litter(ISBR) +         &
-                                    bcsb/B_TO_C
-
-                                ! Large branches
-                                site%plots(ip)%soil%litter(ILBR) =             &
-                                    site%plots(ip)%soil%litter(ILBR) +         &
-                                    bclb/B_TO_C
-
-                                ! Stems
-                                bcs = site%plots(ip)%trees(it)%stemC
-
-                                ! Small boles (DBH < 10) vs. large boles
-                                if (site%plots(ip)%trees(it)%diam_bht          &
-                                    > 10.0) then
-                                    site%plots(ip)%soil%litter(ILBL) =         &
-                                        site%plots(ip)%soil%litter(ILBL) +     &
-                                        bcs/B_TO_C
-                                else
-                                    site%plots(ip)%soil%litter(ISBL) =         &
-                                        site%plots(ip)%soil%litter(ISBL) +     &
-                                        bcs/B_TO_C
-                                end if
-
-                                ! Leaves
-                                lc = site%species(is)%litter_class
-                                site%plots(ip)%soil%litter(lc) =               &
-                                      site%plots(ip)%soil%litter(lc) +           &
-                                    leaf_bm/B_TO_C
+                                ! Acumulate NPP losses
+                                NPP_loss = NPP_loss + biomC + leaf_bm
 
                             end if firecheck
-
-                            ! Get biomass of tree
-                            biomC = site%plots(ip)%trees(it)%biomC
-
-                            ! Acumulate NPP losses
-                            NPP_loss = NPP_loss + biomC + leaf_bm
 
                         end if  fdeathcheck
 
@@ -1456,6 +1719,25 @@ contains
                     site%plots(ip)%num_dead = dt
 
                 end if fntrees
+
+                ! Convert to kg/m2
+                ab_combust = ab_combust/B_TO_C*T_TO_KG/plotsize
+                bgr_combust = bgr_combust/B_TO_C*T_TO_KG/plotsize
+                not_burn = not_burn/B_TO_C*T_TO_KG/plotsize
+
+                if (testing) then
+                    call csv_write(cons_out, not_burn, .false.)
+                    call csv_write(cons_out, site%plots(ip)%canopy_bd, .false.)
+                    call csv_write(cons_out, site%plots(ip)%canopy_bh, .false.)
+                    call csv_write(cons_out, site%plots(ip)%canopy_biom, .false.)
+                    call csv_write(cons_out, R_a, .false.)
+                    call csv_write(cons_out, rosf_active, .false.)
+                    call csv_write(cons_out, CFB, .false.)
+                    call csv_write(cons_out, R_final, .false.)
+                    call csv_write(cons_out, I_final, .false.)
+                    call csv_write(cons_out, ab_combust, .false.)
+                    call csv_write(cons_out, bgr_combust, .true.)
+                end if
 
             else if (wind_prob < site%wind_prob) then treatments
 
@@ -1478,8 +1760,6 @@ contains
 
                         ! Get species index and update tree
                         is = site%plots(ip)%trees(it)%species_index
-                        !call update_tree(site%plots(ip)%trees(it),             &
-                        !    site%species(is))
 
                         ! Get leaf biomass
                         call leaf_biomass_c(site%plots(ip)%trees(it))
@@ -1495,8 +1775,8 @@ contains
                         call wind_survival(site%plots(ip)%trees(it),           &
                             wind_survive)
 
-                        wdeathcheck: if (growth_survive .and. age_survive      &
-                            .and. wind_survive) then
+                        wdeathcheck: if (growth_survive .and.                  &
+                            age_survive .and. wind_survive) then
 
                             ! Tree survives
 
@@ -1509,6 +1789,16 @@ contains
                             ! Copy tree object to top of list
                             call copy_tree(site%plots(ip)%trees(lt),           &
                                 site%plots(ip)%trees(it))
+
+                            if (site%plots(ip)%trees(it)%form > 0 .and.        &
+                                site%plots(ip)%trees(it)%forska_ht < MIN_HT) then
+                                ! Add up shrub live foliage and fine twigs
+                                site%plots(ip)%soil%shrubLitter =              &
+                                    site%plots(ip)%soil%shrubLitter + leaf_bm + &
+                                    site%plots(ip)%trees(it)%branchC*         &
+                                    PERC_BRANCHES(1)
+
+                            end if
 
                             ! Calculate leaf litter
                             if (site%species(is)%conifer) then
@@ -1650,10 +1940,8 @@ contains
 
                     deathloop: do it = 1, site%plots(ip)%numtrees
 
-                        ! Get species index and update tree
+                        ! Get species index
                         is = site%plots(ip)%trees(it)%species_index
-                        !call update_tree(site%plots(ip)%trees(it),             &
-                        !    site%species(is))
 
                         ! Get leaf biomass
                         call leaf_biomass_c(site%plots(ip)%trees(it))
@@ -1678,6 +1966,16 @@ contains
                             ! Copy tree to top of list
                             call copy_tree(site%plots(ip)%trees(lt),           &
                                 site%plots(ip)%trees(it))
+
+                            if (site%plots(ip)%trees(it)%form > 0 .and.        &
+                                site%plots(ip)%trees(it)%forska_ht < MIN_HT) then
+                                ! Add up shrub live foliage and fine twigs
+                                site%plots(ip)%soil%shrubLitter =              &
+                                    site%plots(ip)%soil%shrubLitter + leaf_bm + &
+                                    site%plots(ip)%trees(it)%branchC*         &
+                                    PERC_BRANCHES(1)
+
+                            end if
 
                             ! Calculate litterfall
                             if (site%species(is)%conifer) then
@@ -1796,6 +2094,7 @@ contains
             site%plots(ip)%NPP = site%plots(ip)%NPP -                          &
                 NPP_loss/plotsize/M2_TO_HEC
 
+
         end do plot
 
     end subroutine Mortality
@@ -1814,6 +2113,7 @@ contains
         !    01/01/12     K. Holcomb          Updated to OOP structure
         !    10/10/16     A. C. Foster        Updated for soil/plot overhaul
         !                                       and permafrost updates
+        !    06/10/20     A. C. Foster        Updated for shrubs
         !
 
         ! Data dictionary: calling arguments
@@ -1821,21 +2121,26 @@ contains
         integer,        intent(in)    :: year ! Year of simulation
 
         ! Data dictionary: constants
-        real, parameter :: regmin = 0.01 ! Minimum threshold for regeneration
+        real, parameter :: REGMIN = 0.05 ! Minimum threshold for regeneration
 
         ! Data dictionary: local variables
         real,    dimension(size(site%species)) :: regstress   ! Regeneration stress factor (0-1)
         real,    dimension(site%num_trees)     :: probt       ! Probability of regeneration (trees)
+        real,    dimension(site%num_shrubs)    :: probs       ! Probability of regeneration (shrubs)
         integer, dimension(site%num_trees)     :: tree_sp     ! Id locations of tree species
+        integer, dimension(site%num_shrubs)    :: shrub_sp    ! Id locations of shrub species
         integer, dimension(maxcells*maxcells)  :: r_empty     ! Rows of empty cells
         integer, dimension(maxcells*maxcells)  :: c_empty     ! Columns of empty cells
         integer, dimension(:), allocatable     :: locs        ! Locations of empty cells
         real                                   :: NPP         ! Net primary productivity (tC/ha)
         real                                   :: N_used      ! N used in regeneration (tN/ha)
         real                                   :: tregmax     ! Maximum growth stress factor for trees
+        real                                   :: sregmax     ! Maximum growth stress fractor for shrubs
+        real                                   :: fc_temp     ! Effect of temperature on germination
         real                                   :: fc_org      ! Effect of organic layer depth on regeneration
         real                                   :: germinants  ! Number of seedlings regenerating (#/m2)
         real                                   :: probtsum    ! Sum of probability of regeneration for trees
+        real                                   :: probssum    ! Sum of probability of regeneration for shrubs
         real                                   :: rand        ! Random number for determining species (uniform)
         real                                   :: dbh         ! Tree dbh (cm)
         real                                   :: leafbm      ! Leaf biomass (tC)
@@ -1843,15 +2148,19 @@ contains
         real                                   :: envstress   ! Growth stress factor (0-1)
         integer                                :: num_species ! Number of species at site
         integer                                :: new_trees   ! Number of trees regenerated
+        integer                                :: new_shrubs  ! Number of shrubs regenerated
         integer                                :: numtrees    ! Number of trees on plot
+        integer                                :: numshrubs   ! Number of shrubs on plot
         integer                                :: max_trenew  ! Max number of trees to renew
+        integer                                :: max_srenew  ! Max number of shrubs to renew
         integer                                :: ntrenew     ! Number of trees to renew
+        integer                                :: nsrenew     ! Number of shrubs to renew
         integer                                :: org_tol     ! Ability to regenerate on deep soil
         integer                                :: n_empty     ! Number of empty cells on plot
         integer                                :: ht          ! Tree height (m)
         integer                                :: lc          ! Litter class
         integer                                :: is, ip, it  ! Looping indices
-        integer                                :: stp         ! Species counters
+        integer                                :: stp, ssp    ! Species counters
         integer                                :: t, r, c     ! Looping indices
         integer                                :: irenew, i   ! Looping indices
 
@@ -1862,11 +2171,15 @@ contains
 
             ! Initialize accumulators
             new_trees = 0
+            new_shrubs = 0
             NPP = 0.0
             N_used = 0.0
             tregmax = 0.0
+            sregmax = 0.0
 
-            numtrees = site%plots(ip)%numtrees
+            ! Get number of trees and shrubs
+            numtrees = count(site%plots(ip)%trees(:)%form == 1)
+            numshrubs = count(site%plots(ip)%trees(:)%form > 1)
 
             navail: if (site%plots(ip)%soil%avail_N > epsilon(1.0)) then
 
@@ -1883,9 +2196,10 @@ contains
                             site%plots(ip)%fc_nutr(is),                        &
                             site%plots(ip)%fc_drought(is))
 
-                        if (site%plots(ip)%numtrees .eq. 0) then
+                        if (site%plots(ip)%numtrees == 0) then
                             ! We don't have to worry about shade stress
                             regstress(is) = regstress(is)*                     &
+                                site%plots(ip)%fc_flood(is)*                   &
                                 site%plots(ip)%fc_perm(is)
                         else
                             ! Need to consider shading
@@ -1894,38 +2208,53 @@ contains
                                 regstress(is) = min(regstress(is),             &
                                     light_rsp(site%species(is),                &
                                     site%plots(ip)%con_light(1)))*             &
+                                    site%plots(ip)%fc_flood(is)*               &
                                     site%plots(ip)%fc_perm(is)
                             else
                                 regstress(is) = min(regstress(is),             &
                                     light_rsp(site%species(is),                &
                                     site%plots(ip)%dec_light(1)))*             &
+                                    site%plots(ip)%fc_flood(is)*               &
                                     site%plots(ip)%fc_perm(is)
 
                             end if
                         end if
 
                         ! Check for enough mature trees
-                        if (site%plots(ip)%mature(is) <= 5 .and.               &
-                            site%species(is)%conifer) then
+                        if (site%plots(ip)%mature(is) <= 5) then
                             regstress(is) = regstress(is)*0.5
+                            !site%plots(ip)%avail_spec(is) = 0.0
                         end if
 
                         ! Can't regenerate if below minimum
-                        if (regstress(is) <= site%species(is)%dbh_min) then
-                            regstress(is) = 0.0
+                        if (site%species(is)%unique_id == 'PICEmari') then
+                            if (regstress(is) < 0.01) then
+                                regstress(is) = 0.0
+                            end if
+                        else
+                            if (regstress(is) < REGMIN) then
+                                regstress(is) = 0.0
+                            end if
                         end if
 
                         ! Calculate maximum regrowth capacity across all species
-                        tregmax = max(tregmax, regstress(is))
+                        if (site%species(is)%form == 1) then
+                            tregmax = max(tregmax, regstress(is))
+                        else
+                            sregmax = max(sregmax, regstress(is))
+                        end if
 
                     end do
 
                     ! Compute the max renew number trees and shrubs
                     max_trenew = max(min(int(maxtrees*tregmax) - numtrees,     &
                         maxtrees), 0)
+                    max_srenew = max(min(int(maxshrubs*sregmax) - numshrubs,   &
+                        maxshrubs), 0)
 
                     ! Compute actual number of renewable trees and shrubs
                     ntrenew = min(max_trenew, maxtrees - numtrees)
+                    nsrenew = min(max_srenew, maxshrubs - numshrubs)
 
                     ! Update the seed bank size and seedling bank size (#/m2)
                     seedbank: do is = 1, num_species
@@ -1934,11 +2263,18 @@ contains
                         call fire_rsp(site%species(is), site%plots(ip)%fire,   &
                             site%plots(ip)%fc_fire(is))
 
-                        site%plots(ip)%seedbank(is) =                          &
-                            site%plots(ip)%seedbank(is) +                      &
-                            site%species(is)%invader +                         &
-                            site%species(is)%seed_num*                         &
-                            site%plots(ip)%avail_spec(is)*                     &
+                          ! Check for enough mature trees
+                          if (site%plots(ip)%mature(is) <= 5) then
+                              site%plots(ip)%fc_fire(is) = min(1.0,            &
+                                site%plots(ip)%fc_fire(is))
+                          end if
+
+
+                        site%plots(ip)%seedbank(is) =                      &
+                            site%plots(ip)%seedbank(is) +                  &
+                            site%species(is)%invader +                     &
+                            site%species(is)%seed_num*                     &
+                            site%plots(ip)%avail_spec(is)*                 &
                             site%plots(ip)%fc_fire(is)
 
                         ! We don't allow seedling regeneration the first
@@ -1947,17 +2283,29 @@ contains
 
                             ! Put seeds into seedling bank if envstress is
                             ! high enough
-                            seedcheck: if (regstress(is) > site%species(is)%dbh_min) then
+                            seedcheck: if (regstress(is) > 0.0) then
 
-                                ! Ability to reproduce on moss-covered soil
+                                ! Black spruce limited by temperature
+                                if (site%species(is)%unique_id == 'PICEmari') then
+                                    fc_temp = site%pc_germ
+                                else
+                                    fc_temp = 1.0
+                                end if
+                                if (fc_temp > 1.0) fc_temp = 1.0
+                                if (fc_temp < 0.0) fc_temp = 0.0
+
+
+                                ! Ability to reproduce on deep organic layers
                                 org_tol = site%species(is)%org_tol
-                                fc_org = exp(ORG_GF(org_tol)*                  &
+                                fc_org = 0.1 + exp(ORG_GF(org_tol)*            &
                                     (site%plots(ip)%soil%O_depth +             &
                                     site%plots(ip)%soil%M_depth))
+                                if (fc_org > 1.0) fc_org = 1.0
+                                if (fc_org < 0.0) fc_org = 0.0
 
                                 ! Calculate the number of new seedlings
                                 germinants = site%plots(ip)%seedbank(is)*      &
-                                    fc_org
+                                    fc_org*fc_temp
 
                                 ! Remove new seedlings from seedbank
                                 site%plots(ip)%seedbank(is) =                  &
@@ -1984,11 +2332,13 @@ contains
                             endif seedcheck
 
                             ! Add seedlings from layering
-                            if (site%species(is)%layering) then
+                            if (site%species(is)%layering .and.                &
+                                site%plots(ip)%fire == 0) then
                                 if ((site%plots(ip)%soil%M_depth +             &
-                                    site%plots(ip)%soil%O_depth) > 0.05) then
+                                    site%plots(ip)%soil%O_depth) > 0.10) then
                                     site%plots(ip)%seedling(is) =              &
-                                        site%plots(ip)%seedling(is)*1.8
+                                        site%plots(ip)%seedling(is) +          &
+                                        site%plots(ip)%avail_spec(is)*10.0
                                 end if
                             end if
 
@@ -1998,22 +2348,35 @@ contains
                                 site%species(is)%sprout_num*                   &
                                 site%plots(ip)%avail_spec(is)
 
-                            ! Convert seedling bank to #/plot
-                            site%plots(ip)%seedling(is) =                      &
-                                site%plots(ip)%seedling(is)*plotsize
-
                         end if firecheck
+
+                        ! Convert seedling bank to #/plot
+                        site%plots(ip)%seedling(is) =                      &
+                            site%plots(ip)%seedling(is)*plotsize
 
                     end do seedbank
 
                     ! Calculate probability of regeneration
+                    ! Need to calculate shrub and tree probabilities
+                    ! separately
                     probtsum = 0.0
+                    probssum = 0.0
                     stp = 1
+                    ssp = 1
                     do is = 1, num_species
-                        probt(stp) = site%plots(ip)%seedling(is)*regstress(is)
-                        probtsum = probtsum + probt(stp)
-                        tree_sp(stp) = is
-                        stp = stp + 1
+                        if (site%species(is)%form == 1) then
+                            probt(stp) = site%plots(ip)%seedling(is)*          &
+                                regstress(is)
+                            probtsum = probtsum + probt(stp)
+                            tree_sp(stp) = is
+                            stp = stp + 1
+                        else
+                            probs(ssp) = site%plots(ip)%seedling(is)*          &
+                                regstress(is)
+                            probssum = probssum + probs(ssp)
+                            shrub_sp(ssp) = is
+                            ssp = ssp + 1
+                        end if
                     end do
 
                 else windcheck
@@ -2023,15 +2386,16 @@ contains
                     site%plots(ip)%windCount = max(0,                          &
                         site%plots(ip)%windCount - 1)
 
-                    ! Set probsum to 0
+                    ! Set probsums to 0
                     probtsum = 0.0
+                    probssum = 0.0
 
                 end if windcheck
 
                 ! After setting seed and seedling banks
 
                 ! Calculate cumulative probability of regeneration for trees
-                if (probtsum .gt. epsilon(1.0)) then
+                if (probtsum > epsilon(1.0)) then
                     do is = 1, site%num_trees
                         probt(is) = probt(is)/probtsum
                     end do
@@ -2042,10 +2406,22 @@ contains
                     ntrenew = 0
                 end if
 
+                ! Calculate cumulative probability of regeneration for shrubs
+                if (probssum > epsilon(1.0)) then
+                    do is = 1, site%num_shrubs
+                        probs(is) = probs(is)/probssum
+                    end do
+                    do is = 2, site%num_shrubs
+                        probs(is) = probs(is - 1) + probs(is)
+                    end do
+                else
+                    nsrenew = 0
+                end if
+
                 ! Get current number of trees on plot
                 it = site%plots(ip)%numtrees
 
-                renew: if (ntrenew >= 1) then
+                renew: if (ntrenew >= 1 .or. nsrenew >= 1) then
 
                     ! Count number of unfilled cells
                     n_empty = count(site%plots(ip)%cells(:,:) == 0)
@@ -2084,9 +2460,9 @@ contains
                                 ! Determine species of new tree
                                 rand = urand()
                                 is = 1
-                                do while (rand .gt. probt(is))
+                                do while (rand > probt(is))
                                     is = is + 1
-                                    if (is .gt. site%num_trees) then
+                                    if (is > site%num_trees) then
                                         is = 1 + int(urand(0.0,                &
                                             real(site%num_trees)))
                                         rand = urand()
@@ -2104,8 +2480,11 @@ contains
                                 ! Increment number of plants and
                                 ! initialize new tree
                                 it = it + 1
+                                site%plots(ip)%totaltrees =                    &
+                                    site%plots(ip)%totaltrees + 1
                                 call initialize_tree(site%plots(ip)%trees(it), &
-                                    site%species(is), is)
+                                    site%species(is), is,                      &
+                                    site%plots(ip)%totaltrees)
 
                                 ! Grab the r and c values of that index
                                 r = r_empty(locs(irenew))
@@ -2155,7 +2534,8 @@ contains
                                     shade, site%plots(ip)%fc_gdd(is),          &
                                     site%plots(ip)%fc_drought(is),             &
                                     site%plots(ip)%fc_perm(is),                &
-                                    envstress, site%plots(ip)%fc_nutr(is))
+                                    site%plots(ip)%fc_flood(is), envstress,    &
+                                    site%plots(ip)%fc_nutr(is))
 
                                 ! Add leaf litter to soil and update NPP and
                                 ! N used
@@ -2190,7 +2570,146 @@ contains
 
                             end do tree_renew
 
+                            if (site%plots(ip)%trees(it)%form > 0 .and.        &
+                                site%plots(ip)%trees(it)%forska_ht < MIN_HT) then
+                                ! Add up shrub live foliage and fine twigs
+                                site%plots(ip)%soil%shrubLitter =              &
+                                    site%plots(ip)%soil%shrubLitter + leafbm + &
+                                    site%plots(ip)%trees(it)%branchC*         &
+                                    PERC_BRANCHES(1)
+
+                            end if
+
                         end if ntrees
+
+                        nshrubs: if (nsrenew >= 1) then
+
+                            shrub_renew: do irenew = 1, nsrenew
+
+                                ! Determine species of new shrub
+                                rand = urand()
+                                is = 1
+                                do while (rand > probs(is))
+                                    is = is + 1
+                                    if (is > site%num_shrubs) then
+                                        is = 1 + int(urand(0.0,                &
+                                            real(site%num_shrubs)))
+                                        rand = urand()
+                                    endif
+                                end do
+
+                                ! Increment new individual counter
+                                new_shrubs = new_shrubs + 1
+                                is = shrub_sp(is)
+
+                                ! Decrement seedling bank of species
+                                site%plots(ip)%seedling(is) =                  &
+                                    max(0.0, site%plots(ip)%seedling(is) - 1.0)
+
+                                ! Increment number of plants and
+                                ! initialize new tree
+                                it = it + 1
+                                site%plots(ip)%totaltrees =                    &
+                                     site%plots(ip)%totaltrees + 1
+                                call initialize_tree(site%plots(ip)%trees(it), &
+                                    site%species(is), is,                      &
+                                    site%plots(ip)%totaltrees)
+
+                                ! Grab the r and c values of that index
+                                r = r_empty(locs(irenew + new_trees))
+                                c = c_empty(locs(irenew + new_trees))
+
+                                ! Set tree location to that value
+                                site%plots(ip)%trees(it)%row = r
+                                site%plots(ip)%trees(it)%col = c
+
+                                ! Set this to filled in cells array
+                                site%plots(ip)%cells(r,c) = 1
+
+                                ! Get dbh value of new shrub
+                                ! Must be between 0.1 and 0.5 cm
+                                dbh = 0.3 + nrand(0.0, 1.0)
+                                if (dbh >= 0.5) dbh = 0.5
+                                if (dbh <= 0.1) dbh = 0.1
+                                site%plots(ip)%trees(it)%diam_bht = dbh
+
+                                ! Set clear branch bole height
+                                site%plots(ip)%trees(it)%canopy_ht = 0.0
+
+                                ! Get other characteristics
+                                call forska_height(site%plots(ip)%trees(it))
+                                call stem_shape(site%plots(ip)%trees(it))
+                                call biomass_c(site%plots(ip)%trees(it))
+                                call biomass_n(site%plots(ip)%trees(it))
+                                call leaf_biomass_c(site%plots(ip)%trees(it))
+
+                                ! Leaf biomass
+                                leafbm = site%plots(ip)%trees(it)%leaf_bm
+
+                                ! Tree height
+                                ht = max(int(site%plots(ip)%trees(it)%forska_ht), 1)
+
+                                !calculate shading effect on tree
+                                if (site%plots(ip)%trees(it)%conifer) then
+                                    shade = light_rsp(site%species(is),        &
+                                        site%plots(ip)%con_light(ht))
+                                else
+                                    shade = light_rsp(site%species(is),        &
+                                        site%plots(ip)%dec_light(ht))
+                                end if
+
+                                !calculate environmental stressors
+                                call env_stress(site%plots(ip)%trees(it),      &
+                                    shade, site%plots(ip)%fc_gdd(is),          &
+                                    site%plots(ip)%fc_drought(is),             &
+                                    site%plots(ip)%fc_perm(is),                &
+                                    site%plots(ip)%fc_flood(is), envstress,    &
+                                    site%plots(ip)%fc_nutr(is))
+
+                                ! Add leaf litter to soil and update NPP and
+                                ! N used
+                                if (site%species(is)%conifer) then
+
+                                    NPP = NPP + leafbm*                        &
+                                    (1.0 - CON_LEAF_RATIO) +                   &
+                                    site%plots(ip)%trees(it)%biomC +           &
+                                    site%plots(ip)%trees(it)%rootC
+
+                                    N_used = N_used + leafbm/CON_LEAF_C_N +    &
+                                        site%plots(ip)%trees(it)%biomN
+
+                                    lc = site%species(is)%litter_class
+                                    site%plots(ip)%soil%litter(lc) =           &
+                                        site%plots(ip)%soil%litter(lc) +       &
+                                        leafbm*CON_LEAF_RATIO/B_TO_C
+                                else
+                                    NPP = NPP + leafbm +                       &
+                                    site%plots(ip)%trees(it)%biomC +           &
+                                    site%plots(ip)%trees(it)%rootC
+
+                                    N_used = N_used +                          &
+                                        site%plots(ip)%trees(it)%biomN +       &
+                                        leafbm/DEC_LEAF_C_N
+
+                                    lc = site%species(is)%litter_class
+                                    site%plots(ip)%soil%litter(lc) =           &
+                                        site%plots(ip)%soil%litter(lc) +       &
+                                        leafbm/B_TO_C
+                                end if
+
+                            if (site%plots(ip)%trees(it)%form > 0 .and.        &
+                                site%plots(ip)%trees(it)%forska_ht < MIN_HT) then
+                                ! Add up shrub live foliage and fine twigs
+                                site%plots(ip)%soil%shrubLitter =              &
+                                    site%plots(ip)%soil%shrubLitter + leafbm + &
+                                    site%plots(ip)%trees(it)%branchC*         &
+                                    PERC_BRANCHES(1)
+
+                            end if
+
+                            end do shrub_renew
+
+                        end if nshrubs
 
                     end if nempty
 
@@ -2211,6 +2730,8 @@ contains
             ! Update site and soil variables
             N_used = N_used*HEC_TO_M2/plotsize
             site%plots(ip)%NPP = site%plots(ip)%NPP + NPP*HEC_TO_M2/plotsize
+            site%plots(ip)%soil%shrubLitter =                                  &
+                site%plots(ip)%soil%shrubLitter/B_TO_C/plotsize
 
             ! Convert to tonnes/ha
             do i = 1, 18
@@ -2220,6 +2741,31 @@ contains
 
             ! Deallocate locs array
             if (allocated(locs)) deallocate(locs)
+
+            ! Write out regeneration data if we are testing
+            if (reg_testing) then
+                do is = 1, num_species
+                    call csv_write(spec_regen, site%site_id, .false.)
+                    call csv_write(spec_regen, ip, .false.)
+                    call csv_write(spec_regen, year, .false.)
+                    call csv_write(spec_regen, probtsum, .false.)
+                    call csv_write(spec_regen, probssum, .false.)
+                    call csv_write(spec_regen, site%species(is)%unique_id,     &
+                        .false.)
+                    call csv_write(spec_regen, site%plots(ip)%seedling(is),    &
+                        .false.)
+                    call csv_write(spec_regen, site%plots(ip)%seedbank(is),    &
+                        .false.)
+                    call csv_write(spec_regen, site%plots(ip)%fc_gdd(is), .false.)
+                    call csv_write(spec_regen, site%plots(ip)%fc_nutr(is), .false.)
+                    call csv_write(spec_regen, site%plots(ip)%fc_drought(is), .false.)
+                    call csv_write(spec_regen, site%plots(ip)%fc_flood(is), .false.)
+                    call csv_write(spec_regen, site%plots(ip)%fc_perm(is), .false.)
+                    call csv_write(spec_regen, site%plots(ip)%con_light(1), .false.)
+                    call csv_write(spec_regen, site%plots(ip)%dec_light(1), .false.)
+                    call csv_write(spec_regen, regstress(is), .true.)
+                end do
+            end if
 
         end do plot
 

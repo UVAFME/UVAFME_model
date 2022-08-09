@@ -6,10 +6,10 @@ module Climate
   !
 !*******************************************************************************
 
-    use Constants
-    use Random
+  use Constants
+  use Random
 
-    implicit none
+  implicit none
 
 contains
 
@@ -124,10 +124,10 @@ contains
             do i = 1, MODAYS(k)
                 md = md + 1
                 ! If any rain left to add
-                if (inum .gt. 0) then
+                if (inum > 0) then
                     ! Get random number
                     r_rand = clim_urand()
-                    if(r_rand .le. p_rday) then
+                    if(r_rand <= p_rday) then
                         ! Add amount of rain each day to that day's rain
                         day_vals(md) = r_day
                         ! Decrement number of rain days left to add
@@ -141,7 +141,7 @@ contains
             end do
 
             ! If any rain days left over add rest of rain to middle of month
-            if (inum .gt. 0) then
+            if (inum > 0) then
                 day_vals(md - 15) = float(inum)*r_day
             end if
 
@@ -240,10 +240,10 @@ contains
 
         ! Modify sunset hour angle based on sunset/sunrise occurence
         ! Keith & Kreider 1978 Principles of Solar Engineering
-        if (temp_omega .ge. 1.0) then
+        if (temp_omega >= 1.0) then
            ! Sun never rises
             omega = 0.0
-        else if (temp_omega .le. -1.0) then
+        else if (temp_omega <= -1.0) then
             ! Sun never sets
             omega = pi
         else
@@ -278,7 +278,7 @@ contains
             sol_inc = acos(ang1)
 
             ! Sum up incidence and altitude angles
-            if (sol_inc .ge. (pi/2.0) .or. sol_alt .le. 0.0) then
+            if (sol_inc >= (pi/2.0) .or. sol_alt <= 0.0) then
                 ! Sun is not above horizon
                 xx = 0.0
                 yy = 0.0
@@ -308,7 +308,7 @@ contains
         st = max(AT(1) + AT(2)*erad - AT(3)*erad*(cld/10.0), 0.0)
 
         ! Calculate fraction of TOA radiation attenuated by atmosphere
-        if (erad .gt. 0.0) then
+        if (erad > 0.0) then
             akt = st/erad
         else
             akt = 0.0
@@ -317,14 +317,14 @@ contains
         ! Calculate horizontal surface diffuse radiation (cal/cm2/day)
         ! Keith & Kreider 1978 Principles of Solar Engineering
         df = (1.0045 + 0.04349*akt - 3.5227*akt**2 + 2.6313*akt**3)*st
-        if (akt .gt. 0.75) df = 0.166*st
-        if (df .lt. 0.0) df = 0.0
+        if (akt > 0.75) df = 0.166*st
+        if (df < 0.0) df = 0.0
 
         ! Calculate horizontal surface direct beam radiation (cal/cm2/day)
         dr = st - df
 
         ! Calculate direct beam tilt factor
-        if (altsum .ne. 0.0) then
+        if (altsum /= 0.0) then
             Rb = angsum/altsum
         else
             Rb = 0.0
@@ -373,7 +373,7 @@ contains
         b = -2.5  - 0.14*(e2 - e1) - elev/550.0
 
         ! Calculate PET (cm)
-        if (ta .gt. 0.0) then
+        if (ta > 0.0) then
             evap = a*(ta - b)*sun/hvap
             evap = max(evap, 0.0)
         else
@@ -384,6 +384,309 @@ contains
         pot_evap = evap
 
     end function pot_evap
+
+    !:.........................................................................:
+
+    subroutine calc_ffmc(temp, RH, W_ms, precip_cm, Fo, ffmc)
+        !
+        !  Calculates the daily Canadian Forest Fire Rating System (CFRS) fine
+        !  fuel moisture code (ffmc).
+        !
+        !  Adapted from Wang 2015 NRC Information Report NOR-X-424
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/15/20     A. C. Foster         Original Code
+        !
+
+        ! Data dictionary: calling arguments
+        real,  intent(in)  :: temp      ! Noon daily air temperature (degC)
+        real,  intent(in)  :: RH        ! Noon relative humidity (%)
+        real,  intent(in)  :: W_ms      ! Noon wind speed (m/s)
+        real,  intent(in)  :: precip_cm ! Precipitation over last 24 hrs (cm)
+        real,  intent(in)  :: Fo        ! Previous day's ffmc
+        real,  intent(out) :: ffmc      ! Fine fuel moisture code
+
+        ! Data dictionary: local variables
+        real :: precip ! Precipitation (mm)
+        real :: ws     ! Wind speed (km/hr)
+        real :: wmo    ! Previous day's fine fuel moisture (%)
+        real :: ra     ! Effective rainfall (mm)
+        real :: ed     ! Equilibrium moisture content from drying (%)
+        real :: ew     ! Equilibrium moisture content from wetting (%)
+        real :: z      ! Log drying/wetting rate at 21.1 degC
+        real :: x      ! Actual drying/wetting rate
+        real :: wm     ! Fine fuel moisture (%)
+
+        precip = precip_cm*10.0    ! Convert rainfall to mm
+        ws = W_ms/1000.0*60.0*60.0 ! Convert wind to km/hr
+
+        ! Fine fuel moisture content from previous day
+        wmo = (147.2*(101.0 - Fo))/(59.5 + Fo)
+
+        ! Rain reduction to allow for loss in overhead canopy
+        if (precip > 0.5) then
+            ra = precip - 0.5
+        else
+            ra = 0.5
+        end if
+
+        ! Moisture content from wetting
+        if (precip > 0.5) then
+            if (wmo > 150.0) then
+                wmo = wmo + 0.0015*(wmo - 150.0)*(wmo - 150.0)*                &
+                    sqrt(ra) + 42.5*ra*exp(-100.0/(251.0 - wmo))*              &
+                    (1.0 - exp(-6.93/ra))
+            else
+                wmo = wmo + 42.5*ra*exp(-100.0/(251.0 - wmo))*                 &
+                    (1.0 - exp(-6.93)/ra)
+            end if
+        end if
+
+        ! Cap wmo at 250%
+        if (wmo > 250.0) wmo = 250.0
+
+        ! Equilibrium moisture content from drying
+          ed = 0.942*(RH**0.679) + (11.0 * exp((RH - 100.0)/10.0)) + 0.18*     &
+            (21.1 - temp)*(1.0 - 1.0/exp(RH*0.115))
+
+        ! Equilibrium moisture content from wetting
+        ew = 0.618*(RH**0.753) + (10.0*exp((RH - 100.0)/10)) + 0.18*           &
+            (21.1 - temp)*(1.0 - 1.0/exp(RH*0.115))
+
+        ! Log drying rate at normal temperature (21.1degC)
+        if (wmo < ed .and. wmo < ew) then
+            z = 0.424*(1.0 - (((100.0 - RH)/100.0)**1.7)) + 0.0694*sqrt(ws)*   &
+                (1.0 - ((100.0 - RH)/100.0)**8)
+        else
+            z = 0.0
+        end if
+
+        ! Effect of temperature on drying rate
+        x = z*0.581*exp(0.0365*temp)
+
+        ! Calculate moisture
+        if (wmo < ed .and. wmo < ew) then
+            wm = ew - (ew - wmo)/(10.0**x)
+        else
+            wm = wmo
+        end if
+
+        ! Log of wetting rate at normal temperature of 21.1degC
+        if (wmo > ed) then
+            z = 0.424*(1.0 - (RH/100.0)**1.7) + 0.0694*sqrt(ws)*               &
+                (1.0 - (RH/100.0)**8.0)
+        end if
+
+        ! Effect of temperature on  wetting rate
+        x = z*0.581*exp(0.0365*temp)
+
+        ! Calculate moisture
+        if (wmo > ed) then
+            wm = ed + (wmo - ed)/(10.0**x)
+        end if
+
+        ! Calculate ffmc and correct for outside bounds
+        ffmc = (59.5*(250.0 - wm))/(147.2 + wm)
+
+        if (ffmc > 101) ffmc = 101
+        if (ffmc <= 0.0) ffmc = 0.0
+
+    end subroutine calc_ffmc
+
+    !:.........................................................................:
+
+    subroutine calc_dmc(temp, RH, precip_cm, Po, i, latitude, dmc)
+        !
+        !  Calculates the Canadian Forest Fire Rating System (CFRS) duff
+        !  moisture code (dmc)
+        !
+        !  Adapted from Wang 2015 NRC Information Report NOR-X-424
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/15/20     A. C. Foster         Original Code
+        !
+
+        ! Data dictionary: constants
+
+        ! Day length adjustments
+        ! For latitude near equation (-10, 10 degrees), use a factor of 9
+        ! for all months
+        real, dimension(12), parameter :: ELL01 = [6.5, 7.5, 9.0, 12.8, 13.9,  &
+            13.9, 12.4, 10.9, 9.4, 8.0, 7.0, 6.0] ! latititude >= 30 N
+        real, dimension(12), parameter :: ELL02 = [7.9, 8.4, 8.9, 9.5, 9.9,    &
+            10.2, 10.1, 9.7, 9.1, 8.6, 8.1, 7.8] ! 30 > latitude >= 10
+        real, dimension(12), parameter :: ELL03 = [10.1, 9.6, 9.1, 8.5, 8.1,   &
+            7.8, 7.9, 8.3, 8.9, 9.4, 9.9, 10.2] ! -10 > latitude >= -30
+        real, dimension(12), parameter :: ELL04 = [11.5, 10.5, 9.2, 7.9, 6.8,  &
+            6.2, 6.5, 7.4, 8.7, 10.0, 11.2, 11.8] ! latitude < -30
+
+        ! Data dictionary: calling arguments
+        real,    intent(in)  :: temp      ! Noon air temperature (degC)
+        real,    intent(in)  :: RH        ! Noon elative humidity (%)
+        real,    intent(in)  :: precip_cm ! Precipitation over last 24 hrs (cm)
+        real,    intent(in)  :: Po        ! Previous day's dmc
+        real,    intent(in)  :: latitude  ! Site latitude (degrees)
+        integer, intent(in)  :: i         ! Month of simulation
+        real,    intent(out) :: dmc       ! Duff moisture code
+
+        ! Data dictionary: local variables
+        real, dimension(12) :: ELL    ! Day length adjustment
+        real                :: precip ! Precipitation (mm)
+        real                :: rw     ! Net rainfall (mm)
+        real                :: b      ! Temporary variable to calculate moisture content after rain
+        real                :: temp0  ! Corrected temperature (degC)
+        real                :: wmi    ! Previous day's duff moisture (%)
+        real                :: wmr    ! Moisture content after rain (%)
+        real                :: pr     ! Corrected rainfall (mm)
+        real                :: rk     ! Log drying rate
+
+        precip = precip_cm*10.0 ! Convert rain to mm
+
+        ! Constrain low end of temperature
+        if (temp < -1.1) then
+            temp0 = -1.1
+        else
+            temp0 = temp
+        end if
+
+        ! Determine day length adjustment based on latitude
+        if (latitude > 30.0) then
+            ELL = ELL01
+        else if (latitude <= 30.0 .and. latitude > 10.0) then
+            ELL = ELL02
+        else if (latitude <= 10.0 .and. latitude > -10.0) then
+            ELL = 9.0
+        else if (latitude <= -10.0 .and. latitude > -30.0) then
+            ELL = ELL03
+        else if (latitude <= -30.0) then
+            ELL = ELL04
+        end if
+
+        ! Log drying rate
+        rk = 1.894*(temp0 + 1.1)*(100.0 - RH)*(ELL(i)*0.0001)
+
+        ! Net rainfall (mm)
+        rw = 0.92*precip - 1.27
+
+        ! Alteration to Eq. 12 to calculate more accurately
+        wmi = 20.0 + 280.0/exp(0.023*Po)
+
+        ! Eqs 13a-c
+        if (Po <= 33.0) then
+            b = 100.0/(0.5 + 0.3*Po)
+        else if (Po > 33.0 .and. Po <= 65.0) then
+            b = 14.0 - 1.3*log(Po)
+        else
+            b = 6.2*log(Po) - 17.2
+        end if
+
+        ! Moisture content after rain
+        wmr = wmi + 1000.0*rw/(48.77 + b*rw)
+
+        ! Constrain p
+        if (precip <= 1.5) then
+            pr = Po
+        else
+            pr = 43.43*(5.6348 - log(wmr - 20.0))
+        end if
+
+        if (pr < 0.0) pr = 0.0
+
+        ! Calculate dmc
+        dmc = pr + rk
+        if (dmc < 0.0) dmc = 0.0
+
+    end subroutine calc_dmc
+
+    !:.........................................................................:
+
+    subroutine calc_dc(temp, precip_cm, Dd, latitude, i, dc)
+        !
+        !  Calculates the Canadian Forest Fire Rating System (CFRS) drought
+        !  code (dc)
+        !  Adapted from Wang 2015 NRC Information Report NOR-X-424
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    05/15/20     A. C. Foster         Original Code
+        !
+
+        ! Data dictionary: constants
+        ! Day length adjustment
+        ! Near equator, just use 1.4 for all months
+        real, dimension(12), parameter :: FL01 = [-1.6, -1.6, -1.6, 0.9, 3.8,  &
+            5.8, 6.4, 5.0, 2.4, 0.4, -1.6, -1.6] ! latitude > 20 N
+        real, dimension(12), parameter :: FL02 = [6.4, 5.0, 2.4, 0.4, -1.6,    &
+            -1.6, -1.6, -1.6, -1.6, 0.9, 3.8, 5.8] ! latitude < -20
+
+        ! Data dictionary: calling arguments
+        real,    intent(in)  :: temp      ! Max air temperature (degC)
+        real,    intent(in)  :: precip_cm ! Precipitation (cm)
+        real,    intent(in)  :: Dd        ! Previous day's drought code
+        real,    intent(in)  :: latitude  ! Site latitude (degrees)
+        integer, intent(in)  :: i         ! Month of simulation
+        real,    intent(out) :: dc        ! Drought code
+
+        ! Data dictionary: local variables
+        real :: precip ! Precipitation (mm)
+        real :: temp0  ! Corrected temperature (degC)
+        real :: pe     ! Potential evapotranspiration (mm)
+        real :: ra     ! Precipitation (mm)
+        real :: rw     ! Effective rainfall (mm)
+        real :: smi    ! Temporary variable for calculating dc
+        real :: dr0    ! Temporary variable for calculating drying rate
+        real :: dr     ! Drying rate
+
+        precip = precip_cm*10 ! Convert rainfall to mm
+
+        ! Constrain temperature
+        if (temp < -2.8) then
+            temp0 = -2.8
+        else
+            temp0 = temp
+        end if
+
+        ! Potential evapotranspiration (mm)
+        if (latitude > 20.0) then
+            pe = (0.36*(temp + 2.8) + FL01(i))/2.0
+        else if (latitude <= -20.0) then
+            pe = (0.36*(temp + 2.8) + FL02(i))/2.0
+        else
+            pe = (0.36*(temp + 2.8) + 1.4)/2.0
+        end if
+
+        ! Cap pe at 0 for negative winter DC values
+        if (pe < 0.0) pe = 0.0
+        ra = precip
+
+        ! Effective rainfall
+        rw = 0.83*ra - 1.27
+
+        ! Eq. 19
+        smi = 800.0*exp(-1.0*Dd/400.0)
+
+        ! Alteration to Eq 21
+        dr0 = Dd - 400.0*log(1.0 + 3.937*rw/smi)
+        if (dr0 < 0.0) dr0 = 0.0
+
+        ! Drying rate, use yesterday's DC if precip < 2.8
+        if (precip <= 2.8) then
+            dr = Dd
+        else
+            dr = dr0
+        end if
+
+        ! Calculate dc
+        dc = dr + pe
+
+        if (dc < 0.0) dc = 0.0
+
+    end subroutine calc_dc
 
     !:.........................................................................:
 
@@ -418,13 +721,13 @@ contains
 
         ! Calculate hourly temperature for the day
         do i = 0, 23
-            if ((i .ge. 0) .and. (i .lt. hrise)) then
+            if ((i >= 0) .and. (i < hrise)) then
                 th(i+1) = tmean + ((tmax - tmin)/2.0)*                         &
                     cos((pi*(float(i) + 10.0))/(10.0 + hrise))
-            else if ((i .ge. hrise) .and. (i .le. HMAX)) then
+            else if ((i >= hrise) .and. (i <= HMAX)) then
                 th(i+1) = tmean - ((tmax - tmin)/2.0)*                         &
                     cos((pi*(float(i) - hrise))/(HMAX - hrise))
-            else if ((i .gt. HMAX) .and. (i .lt. 24)) then
+            else if ((i > HMAX) .and. (i < 24)) then
                 th(i+1) = tmean + ((tmax - tmin)/2.0)*                         &
                     cos((pi*(float(i) + HMAX))/(10.0 + hrise))
             end if
@@ -433,7 +736,7 @@ contains
         ! Accumulate hours above the threshold temperature
         couni = 0
         do i = 1, 24
-            if (th(i) .gt. thresh) then
+            if (th(i) > thresh) then
                 couni = couni + 1
             endif
         enddo

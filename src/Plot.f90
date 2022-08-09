@@ -28,8 +28,9 @@ implicit none
         real,              dimension(:),   allocatable :: con_light    ! Conifer light environment (0-1)
         real,              dimension(:),   allocatable :: dec_light    ! Deciduous light environment (0-1)
         real,              dimension(:),   allocatable :: fc_nutr      ! Impact of nutrients on species-specific growth (0-1)
-        real,              dimension(:),   allocatable :: fc_gdd       ! Impact of growing degree-days on species-specific growth (0-1)
+        real,              dimension(:),   allocatable :: fc_gdd       ! Impact of growing deg-days on species-specific growth (0-1)
         real,              dimension(:),   allocatable :: fc_drought   ! Impact of drought on species-specific growth (0-1)
+        real,              dimension(:),   allocatable :: fc_flood     ! Impact of flooding on species-specific growth (0-1)
         real,              dimension(:),   allocatable :: fc_perm      ! Impact of permafrost on species-specific growth (0-1)
         real,              dimension(:),   allocatable :: fc_fire      ! Impact of fire on species-specific regeneration
         integer,           dimension(:),   allocatable :: mature       ! "Mature" species - that can reproduce
@@ -43,14 +44,19 @@ implicit none
         real                                           :: aow0_ByMin   ! Organic layer moisture scaled by wilting point
         real                                           :: saw0_BySAT   ! A-layer moisture scaled by saturation capacity
         real                                           :: amlt         ! Seasonal maximum depth of thaw (m)
+        real                                           :: canopy_bh    ! Canopy base height (m)
+        real                                           :: canopy_bd    ! Canopy bulk density (kg/m3)
+        real                                           :: canopy_biom  ! Canopy biomass (kg/m2)
         real                                           :: cla          ! Cumulative leaf area on the forest floor (m2)
         real                                           :: NPP          ! Net primary production (tC/ha)
         integer                                        :: numtrees     ! Number of live trees on plot
         integer                                        :: num_dead     ! Number of dead trees on plot
         integer                                        :: fire         ! Just had a fire (1) or no (0)
+        integer                                        :: fire_day     ! Day of burn
         integer                                        :: wind         ! Just had a windthrow event (1) or no (0)
         integer                                        :: windCount    ! Number of years since last windthrow event
         integer                                        :: stand_age    ! Stand age of site (years)
+        integer                                        :: totaltrees   ! Total trees initialized - for IDs
     end type PlotData
 
 contains
@@ -58,7 +64,7 @@ contains
     !:.........................................................................:
 
     subroutine initialize_plot(self, numspecies, a_sat, a_fc, a_pwp, o_sat,   &
-            o_fc, o_pwp, o_bd, a_bd, itxt, hum_input)
+            o_fc, o_pwp, o_bd, a_bd, itxt, hum_input, A_depth)
         !
         !  Initializes a plot at a site with starting/input values.
         !
@@ -87,13 +93,14 @@ contains
         real,            intent(in)    :: o_bd       ! Organic layer bulk density (kg/m3)
         real,            intent(in)    :: a_bd       ! A-layer layer bulk density (kg/m3)
         real,            intent(in)    :: hum_input  ! Initial humus amount (t/ha)
+        real,            intent(in)    :: A_depth    ! A-layer depth (m)
         integer,         intent(in)    :: itxt       ! Soil texture (0: very coarse; 1: coarse; 2: fine)
 
         ! Data dictionary: local variables
         real            :: duff ! Duff content (kg)
         integer         :: n, i ! Looping indices
 
-        if (maxcells .ne. 0) then
+        if (maxcells /= 0) then
             ! Allocate tree and cells arrays
             allocate(self%trees(maxcells*maxcells))
             allocate(self%deadtrees(maxcells*maxcells))
@@ -102,7 +109,7 @@ contains
             stop "Must allow at least a few trees"
         endif
 
-        if (maxheight .ne. 0) then
+        if (maxheight /= 0) then
             ! Allocate light arrays
             allocate(self%con_light(maxheight))
             allocate(self%dec_light(maxheight))
@@ -119,6 +126,7 @@ contains
         allocate(self%fc_gdd(numspecies))
         allocate(self%fc_drought(numspecies))
         allocate(self%fc_fire(numspecies))
+        allocate(self%fc_flood(numspecies))
         allocate(self%mature(numspecies))
 
         ! Set to starting values
@@ -130,6 +138,9 @@ contains
         self%windCount = 0
         self%stand_age = 0
         self%wind_cat = 0.0
+        self%canopy_biom = 0.0
+        self%canopy_bh = 0.0
+        self%canopy_bd = 0.0
         self%cla = 0.0
         self%act_evap_day = 0.0
         self%flood_days = 0.0
@@ -149,13 +160,11 @@ contains
         self%fc_nutr = 1.0
         self%fc_gdd = 1.0
         self%fc_drought = 1.0
+        self%fc_flood = 1.0
         self%fc_fire = 1.0
         self%fc_perm = 1.0
         self%soil%lai_w0 = INIT_LAIW
-        self%soil%twig_fuel = 0.0
-        self%soil%smbl_fuel = 0.0
-        self%soil%lrbl_fuel = 0.0
-        self%soil%avail_fuel = 0.0
+        self%totaltrees = 0
 
         ! Initialize soil properties
 
@@ -188,7 +197,7 @@ contains
         self%soil%O_depth = (1.0/plotsize)*(duff/BULK_DUFF)
 
         ! Initialize A-layer, active, and moss-layer depths
-        self%soil%A_depth = 1.0
+        self%soil%A_depth = A_depth
         self%soil%M_depth = 0.0
         self%soil%moss_biom = 0.0
         self%soil%active = self%soil%A_depth
@@ -224,7 +233,6 @@ contains
         ! Data dictionary: local variables
         integer :: it ! Looping index
 
-
         ! Deallocate arrays
         do it = 1, self%numtrees
             call delete_tree(self%trees(it))
@@ -242,6 +250,7 @@ contains
         if (allocated(self%dec_light)) deallocate(self%dec_light)
         if (allocated(self%fc_nutr)) deallocate(self%fc_nutr)
         if (allocated(self%fc_drought)) deallocate(self%fc_drought)
+        if (allocated(self%fc_flood)) deallocate(self%fc_flood)
         if (allocated(self%fc_perm)) deallocate(self%fc_perm)
         if (allocated(self%fc_gdd)) deallocate(self%fc_gdd)
         if (allocated(self%fc_fire)) deallocate(self%fc_fire)
@@ -285,9 +294,9 @@ contains
             do n = 1, self%numtrees
 
                 ! Get correct identifier - genus or species ID
-                if (field .eq. 'genus') then
+                if (field == 'genus') then
                     comp = self%trees(n)%spec_ptr%genus_name
-                else if (field .eq. 'species') then
+                else if (field == 'species') then
                     comp = self%trees(n)%spec_ptr%unique_id
                 endif
 
@@ -384,9 +393,9 @@ contains
             do it = 1, self%numtrees
 
                 ! Get identifier (genus or unique ID)
-                if (field .eq. 'genus') then
+                if (field == 'genus') then
                     comp = self%trees(it)%spec_ptr%genus_name
-                else if (field .eq. 'species') then
+                else if (field == 'species') then
                     comp = self%trees(it)%spec_ptr%unique_id
                 endif
 
@@ -396,7 +405,7 @@ contains
                     ! Grab diameter
                     dm = self%trees(it)%diam_bht
 
-                    if (self%trees(it)%diam_bht .ge. 9.0) then
+                    if (self%trees(it)%diam_bht >= 9.0) then
 
                         ! Calculate and sum basal area (m2)
                         basal_lg(is) = basal_lg(is) +                          &
@@ -412,8 +421,8 @@ contains
                         sumdbh_lg(is) = sumdbh_lg(is) + dm
                         n_lg(is) = n_lg(is) + 1.0
 
-                    else if (self%trees(it)%diam_bht .lt. 9.0) then
-                        if (self%trees(it)%forska_ht .ge. 1.3) then
+                    else if (self%trees(it)%diam_bht < 9.0) then
+                        if (self%trees(it)%forska_ht >= 1.3) then
 
                             ! Calculate and sum basal area (m2)
                             basal_sm(is) = basal_sm(is) +                      &
@@ -489,7 +498,7 @@ contains
 
         ! Get average of DBH, age, and environmental responses
         do is = 1, numitems
-            if (n(is) .eq. 0.0) then
+            if (n(is) == 0.0) then
                 mean_dbh(is) = 0.0
                 mean_year(is) = 0.0
                 envresp_mn(is, :) = RNVALID
@@ -505,12 +514,12 @@ contains
                 end do
             endif
 
-            if (n_lg(is) .eq. 0.0) then
+            if (n_lg(is) == 0.0) then
                 dbh_lg(is) = 0.0
             else
                 dbh_lg(is) = sumdbh_lg(is)/n_lg(is)
             end if
-            if (n_sm(is) .eq. 0.0) then
+            if (n_sm(is) == 0.0) then
                 dbh_sm(is) = 0.0
             else
                 dbh_sm(is) = sumdbh_sm(is)/n_sm(is)
@@ -565,9 +574,9 @@ contains
             do it = 1, self%num_dead
 
                 ! Get identifier (genus or unique ID)
-                if (field .eq. 'genus') then
+                if (field == 'genus') then
                     comp = self%deadtrees(it)%spec_ptr%genus_name
-                else if (field .eq. 'species') then
+                else if (field == 'species') then
                     comp = self%deadtrees(it)%spec_ptr%unique_id
                 endif
 
@@ -601,14 +610,13 @@ contains
 
                     ! Sum up DBH
                     sum_dbh(is) = sum_dbh(is) + self%deadtrees(it)%diam_bht
-
                 endif
             end do
         end do
 
         ! Get average DBH
         do is = 1, numitems
-            if (n(is) .eq. 0) then
+            if (n(is) == 0) then
                 mean_dbh(is) = 0.0
             else
                 mean_dbh(is) = sum_dbh(is)/n(is)

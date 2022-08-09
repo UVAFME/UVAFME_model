@@ -53,9 +53,10 @@ contains
         real, dimension(:,:), allocatable      :: ht           ! Tree height (m)
         real, dimension(:,:), allocatable      :: basal_area   ! Tree basal area (m2)
         real, dimension(:,:), allocatable      :: age          ! Tree age (years)
-        real, dimension(site%numplots, FC_NUM) :: envresp_1    ! Growth response for trees < 10 m height (0-1)
-        real, dimension(site%numplots, FC_NUM) :: envresp_2    ! Growth response for trees >= 10 m and < 20 m height (0-1)
-        real, dimension(site%numplots, FC_NUM) :: envresp_3    ! Growth response for trees >= 20 m height (0-1)
+        real, dimension(site%numplots, FC_NUM) :: envresp_1    ! Growth response for trees < 10 cm DBH (0-1)
+        real, dimension(site%numplots, FC_NUM) :: envresp_2    ! Growth response for trees >= 10 cm and < 20 cm DBH (0-1)
+        real, dimension(site%numplots, FC_NUM) :: envresp_3    ! Growth response for trees >= 20 cm and < 40 cm DBH (0-1)
+        real, dimension(site%numplots, FC_NUM) :: envresp_4    ! Growth response for trees >= 40 cm DBH (0-1)
         real, dimension(site%numplots)         :: loreys_ht    ! Lorey's Height (m)
         real, dimension(site%numplots)         :: plbasal_area ! Plot-level basal area (m2)
         real, dimension(site%numplots)         :: plbiomC      ! Plot-level biomass (tC)
@@ -65,16 +66,19 @@ contains
         real, dimension(site%numplots)         :: sm_stems     ! Plot-level stems <= 5 cm DBH (#)
         real, dimension(site%numplots)         :: med_stems    ! Plot-level stems > 5 cm and <= 20 cm DBH (#)
         real, dimension(site%numplots)         :: lg_stems     ! Plot-level stems > 20 cm DBH (#)
-        real, dimension(site%numplots)         :: n_1          ! Trees < 10 m height (#)
-        real, dimension(site%numplots)         :: n_2          ! Trees >= 10 m and < 20 m height (#)
-        real, dimension(site%numplots)         :: n_3          ! Trees >= 20 m height (#)
+        real, dimension(site%numplots)         :: n_1          ! Trees < 10 cm DBH (#)
+        real, dimension(site%numplots)         :: n_2          ! Trees >= 10 cm and < 20 cm DBH (#)
+        real, dimension(site%numplots)         :: n_3          ! Trees >= 20 cm  and < 40 cm DBH (#)
+        real, dimension(site%numplots)         :: n_4          ! Trees >= 40 cm DBH (#)
         real, dimension(LAI_BINS)              :: site_lai     ! LAI binned by height (m2/m2)
-        real, dimension(FC_NUM)                :: envresp_1_mn ! Average growth response for height bin 1 (0-1)
-        real, dimension(FC_NUM)                :: envresp_2_mn ! Average growth response for height bin 2 (0-1)
-        real, dimension(FC_NUM)                :: envresp_3_mn ! Average growth response for height bin 3 (0-1)
-        real, dimension(FC_NUM)                :: envresp_1_sd ! Sd of growth response for height bin 1 (0-1)
-        real, dimension(FC_NUM)                :: envresp_2_sd ! Sd of growth response for height bin 2 (0-1)
-        real, dimension(FC_NUM)                :: envresp_3_sd ! Sd of growth response for height bin 3 (0-1)
+        real, dimension(FC_NUM)                :: envresp_1_mn ! Average growth response for DBH bin 1 (0-1)
+        real, dimension(FC_NUM)                :: envresp_2_mn ! Average growth response for DBH bin 2 (0-1)
+        real, dimension(FC_NUM)                :: envresp_3_mn ! Average growth response for DBH bin 3 (0-1)
+        real, dimension(FC_NUM)                :: envresp_4_mn ! Average growth response for DBH bin 4 (0-1)
+        real, dimension(FC_NUM)                :: envresp_1_sd ! Sd of growth response for DBH bin 1 (0-1)
+        real, dimension(FC_NUM)                :: envresp_2_sd ! Sd of growth response for DBH bin 2 (0-1)
+        real, dimension(FC_NUM)                :: envresp_3_sd ! Sd of growth response for DBH bin 3 (0-1)
+        real, dimension(FC_NUM)                :: envresp_4_sd ! Sd of growth response for DBH bin 3 (0-1)
         real, dimension(M_TYPES)               :: mort_markers ! Biomass killed by different stressors (tC/ha)
         real                                   :: loreys_ht_mn ! Average Lorey's Height (m)
         real                                   :: loreys_ht_sd ! SD of Lorey's Height (m)
@@ -110,11 +114,16 @@ contains
         envresp_1 = 0.0
         envresp_2 = 0.0
         envresp_3 = 0.0
+        envresp_4 = 0.0
         lg_stems = 0.0
         sm_stems = 0.0
         med_stems = 0.0
         site_lai = 0.0
         totbiomC = 0.0
+        n_1 = 0.0
+        n_2 = 0.0
+        n_3 = 0.0
+        n_4 = 0.0
 
         allocate(ht(site%numplots, maxcells*maxcells))
         allocate(basal_area(site%numplots, maxcells*maxcells))
@@ -165,7 +174,7 @@ contains
                     site%plots(ip)%trees(it)%forska_ht)
 
                 ! Sum up growth response to each stressor by height class
-                if (site%plots(ip)%trees(it)%forska_ht < 10.0) then
+                if (site%plots(ip)%trees(it)%diam_bht < 10.0) then
 
                     do i = 1, FC_NUM
                         envresp_1(ip, i) = envresp_1(ip, 1) +                  &
@@ -173,8 +182,8 @@ contains
                     end do
                     n_1(ip) = n_1(ip) + 1.0
 
-                else if ((site%plots(ip)%trees(it)%forska_ht >= 10.0)        &
-                    .and. (site%plots(ip)%trees(it)%forska_ht < 20.0)) then
+                else if ((site%plots(ip)%trees(it)%diam_bht >= 10.0)        &
+                    .and. (site%plots(ip)%trees(it)%diam_bht < 20.0)) then
 
                     do i = 1, FC_NUM
                         envresp_2(ip, i) = envresp_2(ip, 1) +                  &
@@ -182,13 +191,22 @@ contains
                     end do
                     n_2(ip) = n_2(ip) + 1.0
 
-                else if (site%plots(ip)%trees(it)%forska_ht .ge. 20.0) then
+                else if (site%plots(ip)%trees(it)%diam_bht >= 20.0 .and.       &
+                    site%plots(ip)%trees(it)%diam_bht < 40.0) then
 
                     do i = 1, FC_NUM
                         envresp_3(ip, i) = envresp_3(ip, 1) +                  &
                             site%plots(ip)%trees(it)%env_resp(i)
                     end do
                     n_3(ip) = n_3(ip) + 1.0
+
+                else if (site%plots(ip)%trees(it)%diam_bht >= 40.0) then
+
+                    do i = 1, FC_NUM
+                        envresp_4(ip, i) = envresp_4(ip, 1) +                  &
+                            site%plots(ip)%trees(it)%env_resp(i)
+                    end do
+                    n_4(ip) = n_4(ip) + 1.0
 
                 end if
             enddo
@@ -231,6 +249,12 @@ contains
                 envresp_3(ip, :) = RNVALID
             end if
 
+            if (n_4(ip) >= 1.0) then
+                envresp_4(ip, :) = envresp_4(ip, :)/n_4(ip)
+            else
+                envresp_4(ip, :) = RNVALID
+            end if
+
         end do
 
         ! Get average of mortality bins and convert to tC/ha
@@ -254,6 +278,8 @@ contains
             call stddev(envresp_2(:, i), envresp_2_mn(i), envresp_2_sd(i),     &
                 RNVALID)
             call stddev(envresp_3(:, i), envresp_3_mn(i), envresp_3_sd(i),     &
+                RNVALID)
+            call stddev(envresp_4(:, i), envresp_4_mn(i), envresp_4_sd(i),     &
                 RNVALID)
         end do
 
@@ -282,6 +308,7 @@ contains
             call csv_write(plotvals, envresp_1_mn(i), .false.)
             call csv_write(plotvals, envresp_2_mn(i), .false.)
             call csv_write(plotvals, envresp_3_mn(i), .false.)
+            call csv_write(plotvals, envresp_4_mn(i), .false.)
         end do
         call csv_write(plotvals, loreys_ht_mn, .false.)
         call csv_write(plotvals, loreys_ht_sd, .false.)
@@ -311,7 +338,7 @@ contains
   !:...........................................................................:
 
     subroutine write_genus_or_species_data(site, species_pres, year, field,    &
-        num_types, funit, funit_p)
+        num_types, funit, funit_p, species_ids, sndx)
         !
         !  Writes dead species- or genus- level data to output
         !
@@ -330,6 +357,9 @@ contains
         integer,                 intent(in)           :: num_types    ! Number of species or genera
         integer,                 intent(in)           :: funit        ! File unit for output file
         integer,                 intent(in)           :: funit_p      ! File unit for plot-level output file
+        integer, dimension(:,:), intent(in), optional :: species_ids  ! Array of which species are in each site
+        integer,                 intent(in), optional :: sndx         ! Site index in site array
+
 
         ! Data dictionary: local variables
         character(len=MAX_NLEN), dimension(num_types)        :: genera        ! Species/genus names
@@ -389,9 +419,11 @@ contains
         real,    dimension(num_types)                        :: dbh_sm_mn     ! Average diameter < 9 cm DBH (cm)
         real,    dimension(num_types)                        :: dbh_sm_sd     ! SD of diameter < 9 cm DBH (cm)
         integer, dimension(num_types)                        :: spec_index    ! Location of present species/genera
+        integer, dimension(1)                                :: locs          ! Location of species in species_ids array
         logical, dimension(num_types)                        :: in_site       ! Is the species/genus in the site?
         character(len=MAX_NLEN)                              :: comp          ! Species/genus name
         character(len=MAX_NLEN)                              :: genname       ! Genus name
+        integer                                              :: numlines      ! Number of -999.0s to write for missing species
         integer                                              :: ip, is, ns, l ! Looping indices
 
         ! Get either genera or species
@@ -578,14 +610,20 @@ contains
                 call csv_write(funit, dbh_sm_sd(is), .true.)
             else
                 ! Write -999.0s
-                do l = 1, NHC + NHC + FC_NUM + 24
+                if (field == 'species' .and. present(species_ids) .and.        &
+                    present(sndx)) then
+                    numlines = NHC + NHC + FC_NUM + 24
+                else
+                    numlines = NHC + NHC + FC_NUM + 24
+                end if
+                do l = 1, numlines
                     call csv_write(funit, RNVALID, .false.)
                 end do
                 call csv_write(funit, RNVALID, .true.)
             endif
         enddo
 
-        ! Write plot-level data if turned on
+        !write plot-level data if turned on
         if (plot_level_data) then
 
             do ip = 1, site%numplots
@@ -603,16 +641,15 @@ contains
                         comp = trim(adjustl(species_pres%genusgroups(is)))
                         call csv_write(funit_p, comp, .false.)
                     else
-                        genname = trim(adjustl(species_pres%spec_names(is,1)))
+                        genname = trim(adjustl(species_pres%spec_names(is, 1)))
                         comp = trim(adjustl(species_pres%spec_names(is, 2)))
                         call csv_write(funit_p, genname, .false.)
                         call csv_write(funit_p, comp, .false.)
                     end if
 
                     if (in_site(is)) then
-
                         ! Convert some units
-                        diam_cats(ip, is,:) = diam_cats(ip,is,:)*              &
+                        diam_cats(ip,is,:) = diam_cats(ip,is,:)*               &
                             HEC_TO_M2/plotsize
                         biom_cats(ip,is,:) =                                   &
                             biom_cats(ip,is,:)*HEC_TO_M2/plotsize
@@ -786,7 +823,7 @@ contains
         if (plot_level_data) then
 
             do ip = 1, site%numplots
-                do is = 1, num_types
+                do is = 1, species_pres%numgenera
 
                     ! We write lines out for every species/genus, but write
                     ! -999.0s to ones not 'present'
@@ -811,7 +848,6 @@ contains
                         ! Convert some units
                         d_markers(ip,is,:) = d_markers(ip,is,:)*               &
                             HEC_TO_M2/plotsize
-                        biomC(ip, is) = biomC(ip, is )*HEC_TO_M2/plotsize
 
                         do l = 1, M_TYPES
                             call csv_write(funit_p, d_markers(ip, is, l),      &
@@ -872,6 +908,7 @@ contains
         integer,         intent(in) :: year ! Simulation year
 
         ! Data dictionary: local variables
+        real, dimension(site%numplots, LIT_LEVS) :: fresh_litter  ! Fresh litter (t/ha)
         real, dimension(site%numplots, LIT_LEVS) :: forest_litter ! Total litter (t/ha)
         real, dimension(site%numplots)           :: O_depth       ! Organic layer depth (cm)
         real, dimension(site%numplots)           :: M_depth       ! Moss layer depth (cm)
@@ -888,8 +925,8 @@ contains
         real                                     :: O_depth_sd    ! SD of organic layer depth (cm)
         real                                     :: M_depth_mn    ! Average moss depth (cm)
         real                                     :: M_depth_sd    ! SD of moss depth (cm)
-        real                                     :: moss_biom_mn  ! Average moss biomass (kg)
-        real                                     :: moss_biom_sd  ! SD of moss biomass (kg)
+        real                                     :: moss_biom_mn  ! Average moss biomass (kg/ha)
+        real                                     :: moss_biom_sd  ! SD of moss biomass (kg/ha)
         real                                     :: active_mn     ! Average active layer depth (cm)
         real                                     :: active_sd     ! SD of active layer depth (cm)
         real                                     :: OM_mn         ! Average humus content (t/ha)
@@ -912,6 +949,7 @@ contains
             avail_n(ip) = site%plots(ip)%soil%avail_N*T_TO_KG
 
             do il = 1, LIT_LEVS
+                fresh_litter(ip, il) = site%plots(ip)%soil%litter(il)
                 forest_litter(ip, il) =                                        &
                     site%plots(ip)%soil%forest_litter(il, 1)
             end do
@@ -927,6 +965,7 @@ contains
         call stddev(OM_N, OM_N_mn, OM_N_sd, RNVALID)
         call stddev(avail_n, avail_n_mn, avail_n_sd, RNVALID)
         do il = 1, LIT_LEVS
+            call stddev(fresh_litter(:,il), fresh_lit_sd(il), fresh_lit_mn(il))
             call stddev(forest_litter(:,il), forlitter_mn(il), forlitter_sd(il))
         end do
 
@@ -943,6 +982,9 @@ contains
         call csv_write(soildecomp, OM_N_mn, .false.)
         do il = 1, LIT_LEVS
             call csv_write(soildecomp, forlitter_mn(il), .false.)
+        end do
+        do il = 1, LIT_LEVS
+            call csv_write(soildecomp, fresh_lit_mn(il), .false.)
         end do
         call csv_write(soildecomp, avail_n_mn, .true.)
 
@@ -965,6 +1007,7 @@ contains
 
         ! Data dictionary: local variables
         integer :: ip, it ! Looping indices
+
 
         do ip = 1, site%numplots
             do it = 1, site%plots(ip)%numtrees

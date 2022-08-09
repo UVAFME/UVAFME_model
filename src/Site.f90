@@ -33,14 +33,25 @@ module Site
         real,              dimension(NTEMPS)             :: precip_std      ! SD of monthly precipitation (cm)
         real,              dimension(NTEMPS)             :: cld             ! Mean monthly cloudiness (tenths of sky covered)
         real,              dimension(NTEMPS)             :: cld_std         ! SD of monthly cloudiness (tenths of sky covered)
-        real,              dimension(NTEMPS)             :: accum_precip    ! Accumulated precipitation for linear climate change (cm)
+        real,              dimension(NTEMPS)             :: rh              ! Mean monthly relative humidity (%)
+        real,              dimension(NTEMPS)             :: rh_std          ! SD of monthly relative humidity (%)
+        real,              dimension(NTEMPS)             :: wind            ! Mean monthly wind speed (m/s)
+        real,              dimension(NTEMPS)             :: strikes         ! Mean monthly lightning (strikes/km2/day)
+        real,              dimension(NTEMPS)             :: strikes_std     ! SD of monthly lightning (strikes/km2/day)
+        real,              dimension(NTEMPS)             :: accum_precip    ! Accumulated precipitation for linear clim change (cm)
+        real,              dimension(DAYS_PER_YEAR)      :: maxdaytemp      ! Daily maximum temperature (degC)
+        real,              dimension(DAYS_PER_YEAR)      :: dayprecip       ! Daily precipitation (cm)
         character(len = MAX_NLEN)                        :: region          ! Site region
         character(len = MAX_NLEN)                        :: site_name       ! Site name
         integer                                          :: site_id         ! Site ID
         integer                                          :: runID           ! Run ID
         integer                                          :: numplots        ! Number of plots
         integer                                          :: gcm_year        ! Year to start climate change
+        integer                                          :: stand_age       ! Stand age of site
+        integer                                          :: fire_year       ! Year to burn plots
+        integer                                          :: fire_day        ! Day to burn plots
         integer                                          :: num_trees       ! Number of tree species
+        integer                                          :: num_shrubs      ! Number of shrub species
         real                                             :: latitude        ! Site latitude (degrees)
         real                                             :: longitude       ! Site longitude (degrees)
         real                                             :: elevation       ! Site elevation (m)
@@ -54,12 +65,16 @@ module Site
         real                                             :: grow_days       ! Growing season (>5degC) length (days)
         real                                             :: deg_days        ! Growing degree-days (>5degC)
         real                                             :: wind_prob       ! Windthrow probability (0-1)
-        real                                             :: fire_prob       ! Fire probability (0-1)
-        real                                             :: accum_tmax      ! Accumulated minimum temperature for linear climate change (degC)
-        real                                             :: accum_tmin      ! Accumulated maximum temperature for linear climate change (degC)
-        real                                             :: aridity         ! Current year's index
-        real                                             :: aridity_base    ! "Base" aridity index (calculated from first 10 years of simulation)
+        real                                             :: accum_tmax      ! Accumulated minimum temperature for linear climate
+                                                                            ! change (degC)
+        real                                             :: accum_tmin      ! Accumulated maximum temperature for linear climate
+                                                                            ! change (degC)
+        real                                             :: flow            ! Moisture input from overland flow (mm)
         real                                             :: alff            ! Available light on the forst floor (0-1)
+        real                                             :: pc_germ         ! Impact of temperature on germination
+        real                                             :: fire_wind       ! Wind speed for forced fire (m/s)
+        real                                             :: fire_ffmc       ! FFMC for forced fire
+        real                                             :: fire_dmc        ! DMC for forced fire
     end type SiteData
 
 contains
@@ -96,10 +111,18 @@ contains
         real,              dimension(NTEMPS)             :: prcp_std          ! SD of monthly precipitation (mm)
         real,              dimension(NTEMPS)             :: cld               ! Mean monthly cloud cover (tenths of sky covered)
         real,              dimension(NTEMPS)             :: cld_std           ! SD monthly cloud cover (tenths of sky covered)
+        real,              dimension(NTEMPS)             :: rh                ! Mean monthly relative humidity (%)
+        real,              dimension(NTEMPS)             :: rh_std            ! SD of monthly relative humidity (%)
+        real,              dimension(NTEMPS)             :: wind              ! Mean monthly wind speed (m/s)
+        real,              dimension(NTEMPS)             :: strikes           ! Mean monthly lightning (strikes/km2/day)
+        real,              dimension(NTEMPS)             :: strikes_sd        ! SD of monthly lightning (strikes/km2/day)
         character(len = MAX_NLEN)                        :: sitename          ! Name of site
         character(len = MAX_NLEN)                        :: siteregion        ! Site region
         character(len = MAX_CHAR)                        :: message           ! Warning message
         real                                             :: gcm_year          ! Year to start climate change
+        real                                             :: stand_age         ! Stand age of site
+        real                                             :: fire_year         ! Year to burn sites
+        real                                             :: fire_day          ! Day to burn sites
         real                                             :: lat               ! Latitude (degrees)
         real                                             :: long              ! Longitude (degrees)
         real                                             :: elevation         ! Elevation (m)
@@ -107,7 +130,6 @@ contains
         real                                             :: aspect            ! Aspect (degrees)
         real                                             :: altitude          ! Site altitude (for altitude climate adjustments) (m)
         real                                             :: wind_prob         ! Number of windthrow events in 1000 years
-        real                                             :: fire_prob         ! Number of fires in 1000 years
         real                                             :: a_sat             ! A-layer saturation capacity (volumetric)
         real                                             :: a_fc              ! A-layer field capacity (volumetric)
         real                                             :: a_pwp             ! A-layer permanent wilting point (volumetric)
@@ -118,18 +140,38 @@ contains
         real                                             :: o_bd              ! Organic layer bulk density (kg/m3)
         real                                             :: a_bd              ! A-layer bulk density (kg/m3)
         real                                             :: flow              ! Moisture input from overland flow (mm)
+        real                                             :: fire_wind         ! Wind speed for forced fire (m/s)
+        real                                             :: fire_ffmc         ! FFMC for forced fire
+        real                                             :: fire_dmc          ! DMC for forced fire
+        real                                             :: A_depth           ! A-layer depth (m)
         integer                                          :: itxt              ! Soil texture (0: very coarse; 1: coarse; 2: fine)
+        integer                                          :: management        ! 0: no management; 1: management
+        integer                                          :: thinning          ! 0: no thinning; 1: thinning
+        integer                                          :: prescribed_burn   ! 0: no prescribed burn; 1: prescribed burn
+        integer                                          :: shearblading      ! 0: no shearblading; 1: shearblading
+        integer                                          :: sel_cutting       ! 0: no; 1: yes
+        integer                                          :: year_management   ! Year to conduct management
+        integer                                          :: rotation_time     ! How often to conduct management (years)
+        real                                             :: thin_perc         ! Percent to thin in thinning treatments (0-1)
+        integer                                          :: min_age           ! Minimum age for harvesting
+        real                                             :: dbh_thresh        ! DBH threshold for selective cutting (cm)
         integer                                          :: ip                ! Looping index
 
         ! Initialize properties from the sitelist file
         self%site_id = int(site_vals(1))
         self%runID = int(site_vals(2))
         altitude = site_vals(3)
+        fire_year = site_vals(4)
+        fire_day = site_vals(5)
+        fire_wind = site_vals(6)
+        fire_ffmc = site_vals(7)
+        fire_dmc = site_vals(8)
 
         ! Read in site file
         call read_site(self%site_id, sitename, siteregion, lat, long,          &
             elevation, slope, aspect, a_sat, a_fc, a_pwp, o_sat, o_fc, o_pwp,  &
-            o_bd, a_bd, itxt, hum_input, fire_prob, wind_prob, gcm_year)
+            o_bd, a_bd, itxt, hum_input, A_depth, wind_prob, gcm_year,         &
+            stand_age, flow)
 
         ! Initialize values
         self%site_name = sitename
@@ -141,28 +183,40 @@ contains
         self%aspect = aspect
         self%wind_prob = wind_prob
         self%gcm_year = int(gcm_year)
+        self%stand_age = int(stand_age)
+        self%flow = flow
+        self%fire_year = fire_year
+        self%fire_day = fire_day
+        self%fire_wind = fire_wind
+        self%fire_ffmc = fire_ffmc
+        self%fire_dmc = fire_dmc
 
         ! Standard adjustments and settings
         self%wind_prob = self%wind_prob/1000.0
-        self%fire_prob = self%fire_prob/1000.0
         self%leaf_area_ind = 1.0
         allocate(self%lai_array(maxheight))
         self%lai_array = 0.0
+        self%pc_germ = 0.0
 
         ! Read in climate data
-        call read_climate(self%site_id, tmin, tmax, prcp, cld)
+        call read_climate(self%site_id, tmin, tmax, prcp, cld, rh, wind)
+        call read_lightning(self%site_id, strikes, strikes_sd)
 
         ! Adjust climate data for correct units
         self%tmin = tmin
         self%tmax = tmax
         self%precip = prcp*MM_TO_CM
         self%cld = cld/10.0
+        self%rh = rh
+        self%wind = wind
+        self%strikes = strikes
+        self%strikes_std = strikes_sd
         self%accum_tmax = 0.0
         self%accum_tmin = 0.0
         self%accum_precip = 0.0
 
         ! Adjust temperature and precipitation for altitude if necessary
-        if (altitude .ne. RNVALID) then
+        if (altitude /= RNVALID) then
             adjust_altitude = .true.
             self%altitude = altitude
             call adjustForAltitude(self)
@@ -172,20 +226,21 @@ contains
         endif
 
         ! Read in climate stddev data
-        if (self%site_id .ne. INVALID) then
+        if (self%site_id /= INVALID) then
             if (use_climstd) then
                 call read_climate_stds(self%site_id, tmin_std, tmax_std,       &
-                    prcp_std, cld_std)
+                    prcp_std, cld_std, rh_std)
                 self%tmin_std = tmin_std
                 self%tmax_std = tmax_std
                 self%precip_std = prcp_std*MM_TO_CM
                 self%cld_std = cld_std/10.0
+                self%rh_std = rh_std
             end if
         endif
 
         ! Read in rangelist for site and add to site, also initialize plot-level
         ! soil information
-        if (self%site_id .ne. INVALID) then
+        if (self%site_id /= INVALID) then
             if  (use_rangelist) then
                 ! We are using a rangelist - read in
                 call read_rangelist(self%site_id, range_species_ids)
@@ -211,13 +266,13 @@ contains
         endif
 
         ! Now that we have the species info, initialize plots
-        if (self%site_id .ne. INVALID) then
+        if (self%site_id /= INVALID) then
             self%numplots = numplots
             allocate(self%plots(self%numplots))
             do ip = 1, self%numplots
                 call initialize_plot(self%plots(ip), size(self%species),       &
-                    a_sat, a_fc, a_pwp, o_sat, o_fc, o_pwp, o_bd, a_bd, itxt,  &
-                    hum_input)
+                    a_sat, a_fc, a_pwp, o_sat, o_fc, o_pwp, o_bd, a_bd, &
+                    itxt, hum_input, A_depth)
             enddo
         end if
 
@@ -242,61 +297,66 @@ contains
          !                                       subroutine
          !
 
-        ! Data dictionary: calling arguments
-        class(SiteData),                              intent(inout) :: self              ! Site object
-        type(SpeciesData),            dimension(:),   intent(inout) :: species_data      ! Array of species objects
-        character(len = *), optional, dimension(:),   intent(in)    :: range_species_ids ! Unique IDs for species present at this site
-        integer,                      dimension(:,:), intent(inout) :: species_ids       ! Site IDs x species IDs
-        integer,                                      intent(in)    :: sndx              ! Index of site in site array
 
-        ! Data dictionary: local variables
-        integer :: num_all_species   ! Number of total species in input file
-        integer :: num_site_species  ! Number of total species in site
-        integer :: num_range_species ! Number of total species in rangelist file
-        integer :: n, nn, t          ! Looping indices
+         ! Data dictionary: calling arguments
+         class(SiteData),                              intent(inout) :: self              ! Site object
+         type(SpeciesData),            dimension(:),   intent(inout) :: species_data      ! Array of species objects
+         character(len = *), optional, dimension(:),   intent(in)    :: range_species_ids ! Unique IDs for species present at this site
+         integer,                      dimension(:,:), intent(inout) :: species_ids       ! Site IDs x species IDs
+         integer,                                      intent(in)    :: sndx              ! Index of site in site array
 
-        if (present(range_species_ids)) then
+         ! Data dictionary: local variables
+         integer :: num_all_species   ! Number of total species in input file
+         integer :: num_site_species  ! Number of total species in site
+         integer :: num_range_species ! Number of total species in rangelist file
+         integer :: n, nn, t          ! Looping indices
 
-            ! Total number of species in specieslist
-            num_all_species = size(species_data)
+         if (present(range_species_ids)) then
 
-            ! Number of species in rangelist file
-            num_range_species = size(range_species_ids)
+             ! Total number of species in specieslist
+             num_all_species = size(species_data)
 
-            ! Number of species native to this site
-            num_site_species = count(range_species_ids .ne. 'NP')
+             ! Number of species in rangelist file
+             num_range_species = size(range_species_ids)
 
-            ! Loop through and add native species to species object
-            if (num_site_species == 0) then
-                allocate(self%species(0)) ! Nothing to allocate, no native species
-            else
-                ! Loop through and add species data for each native species
-                ! Also add species id to species_id array for specific site
-                t = 1
-                do n = 1, num_all_species
-                    do nn = 1, num_range_species
-                        if (species_data(n)%unique_id .eq.                     &
-                            range_species_ids(nn)) then
-                            call append(self%species, species_data(n))
-                            species_ids(sndx, t) = n
-                            t = t + 1
-                        endif
-                    enddo
-                enddo
-            endif
-        else
-            t = 1
-            ! No range list, all species in this site
-            do n = 1, num_all_species
-                call append(self%species, species_data(n))
-                species_ids(sndx, t) = n
-                t = t + 1
-            enddo
+             ! Number of species native to this site
+             num_site_species = count(range_species_ids .ne. 'NP')
 
-        endif
+             ! Loop through and add native species to species object
+             if (num_site_species == 0) then
+                 allocate(self%species(0)) ! Nothing to allocate, no native species
+             else
+                 ! Loop through and add species data for each native species
+                 ! Also add species id to species_id array for specific site
+                 t = 1
+                 do n = 1, num_all_species
+                     do nn = 1, num_range_species
+                         if (species_data(n)%unique_id .eq.                     &
+                             range_species_ids(nn)) then
+                             call append(self%species, species_data(n))
+                             species_ids(sndx, t) = n
+                             t = t + 1
+                         endif
+                     enddo
+                 enddo
+             endif
+         else
+             t = 1
+             ! No range list, all species in this site
+             do n = 1, num_all_species
+                 call append(self%species, species_data(n))
+                 species_ids(sndx, t) = n
+                 t = t + 1
+             enddo
 
-        ! Count number of tree species
-        self%num_trees = size(self%species)
+         endif
+
+         ! Count number of tree species
+         self%num_trees = size(self%species)
+
+        ! Count number of shrub and tree species
+        self%num_trees = count(self%species(:)%form == 1)
+        self%num_shrubs = count(self%species(:)%form /= 1)
 
     end subroutine attach_species
 
@@ -320,7 +380,7 @@ contains
 
         ! Loop through and adjust each month
         ! Lapse rates are in degC/km and mm/km, elevation is in m
-        if (self%altitude .ne. RNVALID .and. adjust_altitude) then
+        if (self%altitude /= RNVALID .and. adjust_altitude) then
             do  z = 1, 12
                 self%tmax(z) = self%tmax(z) -                                  &
                     (self%altitude - self%elevation)*self%temp_lapse_r(z)*0.01
@@ -451,6 +511,7 @@ contains
         call csv_write(site_unit, availn_mn, .false.)
         call csv_write(site_unit, aet_mn, .false.)
         call csv_write(site_unit, self%grow_days, .false.)
+        call csv_write(site_unit, self%pc_germ, .false.)
         call csv_write(site_unit, self%deg_days, .false.)
         call csv_write(site_unit, drydays_mn, .false.)
         call csv_write(site_unit, saw0_ByFC_mn, .false.)

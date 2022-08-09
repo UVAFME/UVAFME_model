@@ -50,7 +50,7 @@ contains
 
         ! Read and initialize litter parameters file
         call read_litterpars(litter_params)
-        
+
     end subroutine initialize_inputFiles
 
     !:.........................................................................:
@@ -74,13 +74,14 @@ contains
 
         ! Namelist of runtime parameters
         namelist /uvafme/ numyears, numplots, plotsize, year_print_interval,   &
-                        maxcells, maxheight, fixed_seed,                       &
+                        maxtrees, maxcells, maxshrubs, maxheight, fixed_seed,  &
                         debug, use_rangelist, use_climstd,                     &
                         testing, plot_level_data, tree_level_data,             &
                         with_clim_change, linear_cc, use_gcm, incr_tmin_by,    &
                         incr_tmax_by, incr_precip_by, decr_tmin_by,            &
-                        decr_tmax_by, decr_precip_by, start_gcm, gcm_duration, &
-                        incr_or_decr_prcp, incr_or_decr_temp
+                        decr_tmax_by, decr_precip_by, start_gcm,               &
+                        gcm_duration, incr_or_decr_prcp, incr_or_decr_temp,    &
+                        fire_on, conds_testing, fire_testing, reg_testing
 
         ! First initialize to default values
 
@@ -89,8 +90,9 @@ contains
         numplots = 200
         plotsize = 500.0
         year_print_interval = 10
-        maxcells = 30
-        maxtrees = maxcells*maxcells
+        maxtrees = 1000
+        maxcells = 100
+        maxshrubs = 9000
         maxheight = 60.0
 
         ! RNG parameters
@@ -98,12 +100,16 @@ contains
         debug = .false.
 
         ! Settings and options
+        fire_on = .false.
+        fire_testing = .false.
         adjust_altitude = .false.
         use_rangelist = .true.
         use_climstd = .true.
         testing = .false.
+        conds_testing = .false.
         plot_level_data = .false.
         tree_level_data = .false.
+        reg_testing = .false.
 
         ! Climate change
         with_clim_change = .false.
@@ -123,11 +129,11 @@ contains
 
         ! Now read parameters namelist.
         ! Any variables not set in this file will take the default values above.
-        if (rt_file .ne. INVALID) then
+        if (rt_file /= INVALID) then
 
             read(rt_file, uvafme, iostat = ios, iomsg = msg)
 
-            if (ios .ne. 0) then
+            if (ios /= 0) then
                 ! Problem reading file - tell user.
                 write(message, '(A, I6, A)') "Error reading run time file",    &
                     ios, "IOMSG: ", msg
@@ -135,8 +141,6 @@ contains
                 call warning("Using default parameters")
             end if
         end if
-
-        maxtrees = maxcells*maxcells
 
         ! Create climate change variables
         if (with_clim_change) then
@@ -318,7 +322,7 @@ contains
         !
 
         ! Data dictionary: calling arguments
-        real, dimension(LIT_LEVS, 10), intent(out) :: litter_pars ! Litter parameters array
+        real, dimension(LIT_LEVS, 12), intent(out) :: litter_pars ! Litter parameters array
 
         ! Data dictionary: local variables
         character(len = MAX_NLEN) :: litter_name ! Litter name
@@ -330,14 +334,14 @@ contains
         litter_pars = RNVALID
 
         ! We don't care about the header
-        read(litterfile, '(a)') header
+        read(litterfile, '(A)') header
 
         ! Read litter parameters and set to litter_pars array
         lc = 0
-        do while (lc .le. LIT_LEVS)
+        do while (lc <= LIT_LEVS)
             lc = lc + 1
             read(litterfile, *, iostat = ios, end = 10) litter_name,           &
-                (litter_pars(lc, m), m = 2, 10)
+                (litter_pars(lc, m), m = 2, 12)
         enddo
 
 10      continue
@@ -348,7 +352,7 @@ contains
         end do
 
         !check if any are INVALID
-        if (any(litter_pars .eq. RNVALID)) then
+        if (any(litter_pars == RNVALID)) then
             call fatal_error('Error in litter parameters file, RNVALID')
         endif
 
@@ -428,7 +432,7 @@ contains
                         else
                             ! Check if it is a real or integer, still read in
                             ! as a real
-                            if (scan(rowvals(l), '.') .eq. 0) then
+                            if (scan(rowvals(l), '.') == 0) then
                                 read(rowvals(l), '(I8)') ival
                                 site_vals(lc, l) = real(ival)
                             else
@@ -477,7 +481,7 @@ contains
 
         ! First line has the list of species.  Parse the line.
         read(rglist, '(a)', iostat = ios) line
-        if (ios .eq. 0) then
+        if (ios == 0) then
             call split(line, fields, ',')
             ! Number of species in the file is header length minus 3
             ! (siteid, lat, lon)
@@ -525,7 +529,7 @@ contains
 
     !:.........................................................................:
 
-    subroutine read_climate(site_id, tmin, tmax, prcp, cld)
+    subroutine read_climate(site_id, tmin, tmax, prcp, cld, rh, wind)
         !
         !  Reads in climate data for a site
         !
@@ -542,6 +546,8 @@ contains
         real,    dimension(NTEMPS), intent(out)   :: tmax    ! Mean monthly maximum temperature (degC)
         real,    dimension(NTEMPS), intent(out)   :: prcp    ! Mean monthly precipitation (mm)
         real,    dimension(NTEMPS), intent(out)   :: cld     ! Mean monthly cloudiness (%)
+        real,    dimension(NTEMPS), intent(out)   :: rh      ! Mean monthly relative humidity (%)
+        real,    dimension(NTEMPS), intent(out)   :: wind    ! Mean monthly wind speed (m/s)
 
         ! Data dictionary: local variables
         integer                        :: siteid ! Site id of site
@@ -553,11 +559,11 @@ contains
 
         ! Set output variables to RNVALID to start
         tmin = RNVALID; tmax = RNVALID; prcp = RNVALID;
-        cld = RNVALID
+        cld = RNVALID; rh = RNVALID; wind = RNVALID
 
         ! Read in first climate file ---
         ! We don't care about the header
-        read(cfile, '(a)') header
+        read(cfile, '(A)') header
 
         ! Read until we find the correct site id
         do
@@ -565,7 +571,7 @@ contains
                 (tmin(m), m = 1, NTEMPS), (tmax(m), m = 1, NTEMPS),            &
                 (prcp(m), m = 1, NTEMPS)
 
-            if (site_id .eq. siteid) then
+            if (site_id == siteid) then
                 exit
             endif
 
@@ -578,14 +584,15 @@ contains
 
         ! Now read in the next climate file ----
         ! We don't care about the header
-        read(cexfile, '(a)') header
+        read(cexfile, '(A)') header
 
         ! Now read the file until we find the correct siteid
         do
             read(cexfile, *, iostat = ios, end = 11) siteid, lat, long,        &
-                (cld(m), m = 1, NTEMPS)
+                (cld(m), m = 1, NTEMPS), (rh(m), m = 1, NTEMPS),               &
+                (wind(m), m = 1, NTEMPS)
 
-            if (site_id .eq. siteid) then
+            if (site_id == siteid) then
                 exit
             end if
 
@@ -596,8 +603,9 @@ contains
         ! Rewind the second climate file
         rewind(cexfile)
 
-        if (any(tmin .eq. RNVALID) .or. any(tmax .eq. RNVALID) .or.            &
-            any(prcp .eq. RNVALID) .or. any(cld .eq. RNVALID)) then
+        if (any(tmin == RNVALID) .or. any(tmax == RNVALID) .or.                &
+            any(prcp == RNVALID) .or. any(cld == RNVALID) .or.                 &
+            any(wind == RNVALID) .or. any(rh == RNVALID)) then
 
             ! Can't find site - skip
             write(logf, *) 'No climate data for site number ', site_id
@@ -611,7 +619,7 @@ contains
     !:.........................................................................:
 
     subroutine read_climate_stds(site_id, tmin_std, tmax_std, prcp_std,        &
-            cld_std)
+            cld_std, rh_std)
         !
         !  Reads in standard devation climate data for a site
         !
@@ -627,7 +635,8 @@ contains
         real,    dimension(NTEMPS), intent(out)   :: tmin_std ! SD of monthly minimum temperature (degC)
         real,    dimension(NTEMPS), intent(out)   :: tmax_std ! SD of monthly maximum temperature (degC)
         real,    dimension(NTEMPS), intent(out)   :: prcp_std ! SD of monthly precipitation (mm)
-        real,    dimension(NTEMPS), intent(out)   :: cld_std  ! SD of cloud cover (%)
+        real,    dimension(NTEMPS), intent(out)   :: cld_std  ! SD of monthly cloudiness (%)
+        real,    dimension(NTEMPS), intent(out)   :: rh_std   ! SD of monthly relative humidity (%)
 
         ! Data dictionary: local variables
         integer                                :: siteid ! Site ID
@@ -639,11 +648,11 @@ contains
 
         ! Set standard deviations to RNVALID
         tmin_std = RNVALID; tmax_std = RNVALID; prcp_std = RNVALID
-        cld_std = RNVALID
+        cld_std = RNVALID; rh_std = RNVALID
 
         ! Read first file ---
         ! We don't care about the header
-        read(cstdfile, '(a)') header
+        read(cstdfile, '(A)') header
 
         ! Read the file until we find the correct siteid
         do
@@ -651,7 +660,7 @@ contains
                 (tmin_std(m), m = 1, NTEMPS), (tmax_std(m), m = 1, NTEMPS),    &
                 (prcp_std(m), m = 1, NTEMPS)
 
-            if (site_id .eq. siteid) then
+            if (site_id == siteid) then
                 exit
             endif
         enddo
@@ -663,14 +672,14 @@ contains
 
         ! Now read in the second file
         ! We don't care about the header
-        read(cexstdfile, '(a)') header
+        read(cexstdfile, '(A)') header
 
         ! Read the file until we find the correct siteid
         do
             read(cexstdfile, *, iostat = ios, end = 11) siteid, lat, long,     &
-                (cld_std(m), m = 1, NTEMPS)
+                (cld_std(m), m = 1, NTEMPS), (rh_std(m), m = 1, NTEMPS)
 
-            if (site_id .eq. siteid) then
+            if (site_id == siteid) then
                 exit
             end if
 
@@ -681,8 +690,9 @@ contains
         ! Rewind the second file
         rewind(cexstdfile)
 
-        if (any(tmin_std .eq. RNVALID) .or. any(tmax_std .eq. RNVALID) .or.    &
-            any(prcp_std  .eq. RNVALID) .or. any(cld_std  .eq. RNVALID)) then
+        if (any(tmin_std == RNVALID) .or. any(tmax_std == RNVALID) .or.        &
+            any(prcp_std  == RNVALID) .or. any(cld_std  == RNVALID) .or.       &
+            any(rh_std == RNVALID)) then
 
                 ! Bad data - will be skipped
                 write(logf, *) 'No climate stdev data for site number ', site_id
@@ -690,6 +700,59 @@ contains
         endif
 
     end subroutine read_climate_stds
+
+    !:.........................................................................:
+
+    subroutine read_lightning(site_id, strikes, strikes_sd)
+        !
+        !  Reads monthly lightning strike data
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/10/19     A. C. Foster        Original Code
+
+        ! Data dictionary: calling arguments
+        integer,                    intent(inout) :: site_id    ! Site ID of site
+        real,    dimension(NTEMPS), intent(out)   :: strikes    ! Mean monthly lightning (strikes/km2/day)
+        real,    dimension(NTEMPS), intent(out)   :: strikes_sd ! SD of monthly lightning (strikes/km2/day)
+
+        ! Data dictionary: local variables
+        integer                        :: siteid ! Site id
+        real                           :: lat    ! Latitude
+        real                           :: long   ! Longitude
+        character(len = MAX_LONG_LINE) :: header ! File header
+        integer                        :: ios    ! I/O status
+        integer                        :: m      ! Looping index
+
+        ! Set outputs to RNVALID to start
+        strikes = RNVALID; strikes_sd = RNVALID
+
+        ! We don't care about the header
+        read(lightfile, '(A)') header
+
+        ! Read until we find the correct site id
+        do
+            read(lightfile, *, iostat = ios, end = 10) siteid, lat, long,      &
+                (strikes(m), m = 1, NTEMPS), (strikes_sd(m), m = 1, NTEMPS)
+
+            if (site_id == siteid) then
+                exit
+            endif
+
+        enddo
+
+10      continue
+
+        ! Rewind the file
+        rewind(lightfile)
+
+        if (any(strikes == RNVALID) .or. any(strikes_sd == RNVALID)) then
+            ! Bad data - will be skipped
+            write(logf, *) 'No lightning data for site number ', site_id
+            site_id = INVALID
+        endif
+    end subroutine read_lightning
 
     !:.........................................................................:
 
@@ -710,6 +773,7 @@ contains
         real, dimension(NTEMPS), intent(out)   :: tmin      ! Mean monthly minimum temperature (degC)
         real, dimension(NTEMPS), intent(out)   :: tmax      ! Mean monthly maximum temperature (degC)
         real, dimension(NTEMPS), intent(out)   :: prcp      ! Mean monthly precipitation (mm)
+        !real, dimension(NTEMPS), intent(out)   :: rh        ! Mean monthly relative humidity (%)
 
         ! Data dictionary: local variables
         integer                        :: siteid ! Site ID
@@ -720,14 +784,14 @@ contains
         integer                        :: m      ! Looping index
 
         ! Set values to RNVALID to start
-        tmin = RNVALID; tmax = RNVALID; prcp = RNVALID
+        tmin = RNVALID; tmax = RNVALID; prcp = RNVALID !; rh = RNVALID
 
-        if (ygcm .eq. startyear) then
+        if (ygcm == startyear) then
             ! New site.  We don't assume numerical ordering in the site file.
             rewind(cgcmfile)
 
             ! We don't care about the header
-            read(cgcmfile, '(a)') header
+            read(cgcmfile, '(A)') header
 
         endif
 
@@ -737,7 +801,7 @@ contains
                 (tmin(m), m = 1, NTEMPS), (tmax(m), m = 1, NTEMPS),            &
                 (prcp(m), m = 1, NTEMPS)
 
-            if (site_id .eq. siteid .and. int(year) .eq. ygcm) then
+            if (site_id == siteid .and. int(year) == ygcm) then
                 exit
             endif
 
@@ -745,8 +809,8 @@ contains
 
 10      continue
 
-        if (any(tmin .eq. RNVALID) .or. any(tmax .eq. RNVALID) .or.            &
-                any(prcp .eq. RNVALID)) then
+        if (any(tmin == RNVALID) .or. any(tmax == RNVALID) .or.                &
+                any(prcp == RNVALID)) then
                 write(logf, *) 'No climate change data for site number ',      &
                     site_id
             site_id = INVALID
@@ -756,9 +820,144 @@ contains
 
     !:.........................................................................:
 
+    subroutine read_gcm_lightning(site_id, ygcm, startyear, strmn)
+        !
+        !  Reads in optional lightning strike climate change file
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/01/20     A.C. Foster          Original Code
+        !
+
+        ! Data dictionary: calling arguments
+        integer,                 intent(inout) :: site_id   ! Site ID of site
+        integer,                 intent(in)    :: ygcm      ! Current year of climate change
+        integer,                 intent(in)    :: startyear ! Start year of climate change
+        real, dimension(NTEMPS), intent(out)   :: strmn     ! Mean monthly lightning (strikes/km2/day)
+
+        ! Data dictionary: local variables
+        integer                        :: siteid ! Site ID
+        real                           :: lat    ! Latitude
+        real                           :: long   ! Longitude
+        real                           :: year   ! Year
+        character(len = MAX_LONG_LINE) :: header ! File header
+        integer                        :: m      ! Looping index
+
+        ! Set to RNVALID to start
+        strmn = RNVALID
+
+        if (ygcm == startyear) then
+            ! New site.  We don't assume numerical ordering in the site file.
+            rewind(cgclightfile)
+
+            ! We don't care about the header
+            read(cgclightfile, '(A)') header
+        endif
+
+        ! Read until we find the correct site and year
+        do
+            read(cgclightfile, *, end = 10) siteid, lat, long, year,           &
+                (strmn(m), m = 1, NTEMPS)
+
+            if (site_id == siteid .and. int(year) == ygcm) then
+                exit
+            endif
+
+        enddo
+
+10      continue
+
+        if (any(strmn == RNVALID)) then
+            ! Bad data - skip site
+            write(logf, *) 'No climate change lightning data for site ',       &
+                ' number ', site_id
+            site_id = INVALID
+        endif
+
+    end subroutine read_gcm_lightning
+
+    !:.........................................................................:
+
+    subroutine read_daily_climate(site_id, tmean, tmin, tmax, prcp)
+        !
+        !  Reads in optional daily climate file
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/01/19     A.C. Foster          Original Code
+        !
+
+        ! Data dictionary: calling arguments
+        integer,                        intent(inout) :: site_id ! Site ID of site
+        real, dimension(DAYS_PER_YEAR), intent(out)   :: tmean   ! Mean daily temperature (degC)
+        real, dimension(DAYS_PER_YEAR), intent(out)   :: tmin    ! Minimum daily temperature (degC)
+        real, dimension(DAYS_PER_YEAR), intent(out)   :: tmax    ! Maximum daily temperature (degC)
+        real, dimension(DAYS_PER_YEAR), intent(out)   :: prcp    ! Daily precipitation (mm)
+
+        ! Data dictionary: local variables
+        integer                        :: siteid ! Site ID of site
+        real                           :: lat    ! Latitude
+        real                           :: long   ! Longitude
+        real                           :: year   ! Year
+        real                           :: jd     ! Looping index
+        real                           :: tdmean ! Mean temperature (degC)
+        real                           :: tdmax  ! Max temperature (degC)
+        real                           :: tdmin  ! Min temperature (degC)
+        real                           :: dprcp  ! Precip (mm)
+        character(len = MAX_LONG_LINE) :: header ! File header
+        integer                        :: j      ! Looping index
+
+        ! Set to RNVALID to start
+        tmean = RNVALID; tmin = RNVALID; tmax = RNVALID; prcp = RNVALID
+
+        ! New site.  We don't assume numerical ordering in the site file.
+        rewind(dailyclim)
+
+        ! We don't care about the header
+        read(dailyclim, '(A)') header
+
+        ! Loop until we find the correct site ID and jd = 1
+        do
+            read(dailyclim, *, end = 10) siteid, lat, long, year, jd, tdmean,  &
+                tdmax, tdmin, dprcp
+
+            if (site_id == siteid .and. int(jd) == 1) then
+
+                tmean(1) = tdmean
+                tmax(1) = tdmax
+                tmin(1) = tdmin
+                prcp(1) = dprcp
+
+                ! Now read in the rest of the values
+                do j = 2, DAYS_PER_YEAR
+                    read(dailyclim, *, end = 10) siteid, lat, long, year, jd,  &
+                        tmean(j), tmax(j), tmin(j), prcp(j)
+                end do
+                exit
+
+            endif
+
+        enddo
+
+10      continue
+
+        if (any(tmean == RNVALID) .or. any(tmin == RNVALID) .or.               &
+            any(tmax == RNVALID) .or. any(prcp == RNVALID) ) then
+                ! Bad data - will skip
+                write(logf, *) 'No climate change data for site number ',      &
+                    site_id
+            site_id = INVALID
+        endif
+
+    end subroutine read_daily_climate
+
+    !:.........................................................................:
+
     subroutine read_site(site_id, sitename, siteregion, lat, long, elevation,  &
         slope, aspect, asat, afc, apwp, osat, ofc, opwp, obd, abd, itxt,       &
-        hum_input, fprob, wprob, stand_age)
+        hum_input, A_depth, wprob, gcm_year, stand_age, flow)
     !
     !  Reads in site and soil input for a site
     !
@@ -786,9 +985,11 @@ contains
         real,                      intent(out)   :: obd        ! Organic layer bulk density (kg/m3)
         real,                      intent(out)   :: abd        ! A-layer bulk density (kg/m3)
         real,                      intent(out)   :: hum_input  ! Initial humus amount (t/ha)
-        real,                      intent(out)   :: fprob      ! Fires in 1000 years
+        real,                      intent(out)   :: A_depth    ! A-layer soil depth (m)
         real,                      intent(out)   :: wprob      ! Windthrow events in 1000 years
         real,                      intent(out)   :: stand_age  ! Stand age of site (years)
+        real,                      intent(out)   :: gcm_year   ! When to start gcm (years)
+        real,                      intent(out)   :: flow       ! Moisture input from overland flow (mm)
         integer,                   intent(out)   :: itxt       ! Soil texture (0: very coarse; 1: coarse; 2: fine)
 
         ! Data dictionary: local variables
@@ -800,16 +1001,16 @@ contains
         siteid = INVALID
 
         ! We don't care about the header
-        read(sfile, '(a)') header
+        read(sfile, '(A)') header
 
         ! Read until we find the correct site ID
         do
             read(sfile, *, iostat = ios, end = 10) siteid, lat, long,          &
                 sitename, siteregion, elevation, slope, aspect, asat, afc,     &
-                apwp, osat, ofc, opwp, abd, obd, itxt, hum_input, fprob,       &
-                wprob, stand_age
+                apwp, osat, ofc, opwp, abd, obd, itxt, hum_input, A_depth,     &
+                wprob, stand_age, gcm_year, flow
 
-            if (site_id .eq. siteid) then
+            if (site_id == siteid) then
                 exit
             endif
 
@@ -819,7 +1020,7 @@ contains
 
         rewind(sfile)
 
-        if (siteid .eq. INVALID) then
+        if (siteid == INVALID) then
             ! Will be skipped
             call warning("Site not found in site data file")
             site_id = INVALID
@@ -855,6 +1056,8 @@ contains
         integer                        :: layer_type      ! 0: no layering; 1: layering
         integer                        :: genus_sort      ! ID in genus list
         integer                        :: genus_id        ! ID in species/genus list
+        integer                        :: form            ! 1: tree; 2: tree-like shrub;
+                                                          ! 3: erect shrub; 4: prostrate shrub
         integer                        :: shade_tol       ! Relative shade tolerance (1-5; 5 = least tolerant)
         integer                        :: lownutr_tol     ! Relative low nutrient tolerance (0-3; 3 = least tolerant)
         integer                        :: stress_tol      ! Relative stress tolerance (1-5; 5 = least tolerant)
@@ -863,10 +1066,10 @@ contains
         integer                        :: flood_tol       ! Relative flood tolernace (1-7; 7 = least tolerant)
         integer                        :: perm_tol        ! Relative permafrost tolerane (1-2; 2 = least tolerant)
         integer                        :: org_tol         ! Relative ability to germinate on deep soil (1-3; 3 = least able)
+        integer                        :: recr_age        ! Minimum age for reproduction
         integer                        :: fire_regen      ! Relative ability to reproduce following fire
                                                           ! (1-2: fire beneficial; 3: 4-6 fire detrimental)
         integer                        :: litter_class    ! Litter class
-        integer                        :: recr_age        ! Minimum age for reproduction
         real                           :: max_age         ! Average maximum age (years)
         real                           :: max_diam        ! Average maximum DBH (cm)
         real                           :: max_ht          ! Average maximum height (m)
@@ -881,11 +1084,13 @@ contains
         real                           :: seedling_surv   ! Proportion of seedling bank lost annually (0-1)
         real                           :: invader         ! Seed rain from outside the plot (seeds/m2)
         real                           :: bark_thick      ! Bark thickness (cm bark/cm DBH)
+        real                           :: F_i             ! Fire scorch parameter (Thonicke et al. 2010)
         real                           :: seed_num        ! Seed rain from within the plot (seeds/m2)
         real                           :: sprout_num      ! Regeneration from sprouting (sprouts/m2)
         real                           :: s, g            ! Growth parameters
         real                           :: beta            ! Growth parameter
         real                           :: dbh_min         ! Mininum DBH growth (cm)
+        real                           :: min_recr_dbh    ! Minimum DBH for reproduction (cm)
         logical                        :: conifer         ! Is species a conifer?
         logical                        :: layering        ! Can species reproduce by layering?
         integer                        :: num_all_species ! Total number of species in file
@@ -901,13 +1106,13 @@ contains
 
         ! Read and discard the first line
         read(splist, '(A500)', iostat = ios) line
-        if (ios .ne. 0) then
+        if (ios /= 0) then
             call fatal_error('Unable to read the specieslist file')
         endif
 
         lc = 0
         ! Read the file
-        do while (lc .lt. num_all_species)
+        do while (lc < num_all_species)
             lc = lc + 1
             read(splist, *, end = 100)                                         &
             genus_id,                                                          &
@@ -915,6 +1120,7 @@ contains
             genus_sort,                                                        &
             taxonomic_name,                                                    &
             common_name,                                                       &
+            form,                                                              &
             max_age,                                                           &
             max_diam,                                                          &
             max_ht,                                                            &
@@ -934,6 +1140,7 @@ contains
             perm_tol,                                                          &
             lownutr_tol,                                                       &
             bark_thick,                                                        &
+            F_i,                                                               &
             fire_regen,                                                        &
             stress_tol,                                                        &
             age_tol,                                                           &
@@ -946,6 +1153,7 @@ contains
             layer_type,                                                        &
             org_tol,                                                           &
             recr_age,                                                          &
+            min_recr_dbh,                                                      &
             seed_surv,                                                         &
             seedling_surv,                                                     &
             unique_id
@@ -965,13 +1173,14 @@ contains
 
             ! Initialize the species object
             call initialize_species(species_data(lc), genus_name,              &
-                taxonomic_name, unique_id, common_name, shade_tol,             &
+                taxonomic_name, unique_id, common_name, form, shade_tol,       &
                 lownutr_tol, stress_tol, age_tol, dry_tol, flood_tol,          &
-                perm_tol, org_tol, bark_thick, fire_regen, max_age,            &
+                perm_tol, org_tol, bark_thick, F_i, fire_regen, max_age,       &
                 max_diam, max_ht, wood_bulk_dens, rootdepth, leafdiam_a,       &
                 leafarea_c, deg_day_min, deg_day_opt, deg_day_max,             &
                 seedling_surv, invader, seed_num, sprout_num, layering,        &
-                seed_surv, s, g, beta, conifer, litter_class, recr_age, dbh_min)
+                seed_surv, s, g, beta, conifer, litter_class, recr_age,        &
+                dbh_min, min_recr_dbh)
         enddo
 
 

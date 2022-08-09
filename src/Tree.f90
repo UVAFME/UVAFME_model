@@ -27,14 +27,19 @@ module Tree
         real                        :: branchC            ! Branch biomass (tC)
         real                        :: rootC              ! Root biomass (tC)
         real                        :: biomN              ! N content (tC)
-        real                        :: CK                 ! Proportion of crown scorched by fire (%)
+        real                        :: CK                 ! Proportion of crown scorched by fire (0-1)
+        real                        :: pm_tau             ! Effect of cambial burning (0-1)
+        real                        :: pm_CK              ! Effect of scorch from fires (0-1)
         real                        :: row                ! Row location
         real                        :: col                ! Column location
         integer                     :: mort_count         ! How many years tree has experiences low growth
         integer                     :: tree_age           ! Tree age (years)
         integer                     :: stressor           ! Which factor is most stressful
         logical                     :: conifer            ! 1: conifer; 0: deciduous
+        integer                     :: form               ! Form: 1: tree; 2: tree-like shrub;
+                                                          ! 3: erect shrub; 4: prostrate shrub
         integer                     :: species_index      ! Species index - points to SpeciesData array location
+        integer                     :: tree_id            ! Unique tree ID
         logical                     :: mort_marker        ! Is tree marked for death?
     end type TreeData
 
@@ -43,7 +48,7 @@ contains
 
     !:.........................................................................:
 
-    subroutine initialize_tree(self, tree_species, is)
+    subroutine initialize_tree(self, tree_species, is, treeID)
         !
         !  Initializes a tree object with initial conditions
         !
@@ -57,6 +62,7 @@ contains
         class(TreeData),           intent(inout) :: self         ! Tree object
         type(SpeciesData), target, intent(in)    :: tree_species ! Species object
         integer,                   intent(in)    :: is           ! Integer for species array
+        integer,                   intent(in)    :: treeID       ! Unique tree ID
 
         ! Constructor
         self%env_resp = RNVALID
@@ -72,6 +78,8 @@ contains
         self%rootC = 0.0
         self%biomN = 0.0
         self%CK = 0.0
+        self%pm_tau = 0.0
+        self%pm_CK = 0.0
         self%row = 0
         self%col = 0
         self%mort_count = 0
@@ -79,13 +87,14 @@ contains
         self%stressor = 0
         self%mort_marker = .false.
         self%species_index = is
+        self%tree_id = treeID
 
         ! Attach species data and species index
         if (associated(self%spec_ptr)) nullify(self%spec_ptr)
-        allocate(self%spec_ptr)
         self%spec_ptr => tree_species
 
-        ! Grab this from species data for easier use
+        ! Grab these from species data for easier use
+        self%form = self%spec_ptr%form
         self%conifer = self%spec_ptr%conifer
 
     end subroutine initialize_tree
@@ -108,6 +117,7 @@ contains
 
         ! Copy attributes
         self%env_resp       = tree%env_resp
+        !if (associated(self%spec_ptr)) nullify(self%spec_ptr)
         self%spec_ptr       => tree%spec_ptr
         self%species_index  = tree%species_index
         self%diam_opt       = tree%diam_opt
@@ -122,21 +132,24 @@ contains
         self%rootC          = tree%rootC
         self%biomN          = tree%biomN
         self%CK             = tree%CK
+        self%pm_tau         = tree%pm_tau
+        self%pm_CK          = tree%pm_CK
         self%row            = tree%row
         self%col            = tree%col
         self%mort_count     = tree%mort_count
         self%tree_age       = tree%tree_age
         self%stressor       = tree%stressor
         self%mort_marker    = tree%mort_marker
+        self%form           = tree%form
         self%conifer        = tree%conifer
+        self%tree_id        = tree%tree_id
 
     end subroutine copy_tree
 
-
     !:.........................................................................:
 
-    subroutine env_stress(self, shade, fc_gdd, fc_drought, fc_perm, envstress, &
-        fc_nutr)
+    subroutine env_stress(self, shade, fc_gdd, fc_drought, fc_perm, fc_flood, &
+        envstress, fc_nutr)
         !
         !  Calculates the environmental stress on a tree using Liebig's Law of
         !   the Minimum, and sets what the most stressful factor is
@@ -146,7 +159,8 @@ contains
         !                2: drought
         !                3: shade
         !                4: permafrost
-        !                5: nutrients
+        !               5: flooding
+        !                6: nutrients
         !
         !  Record of revisions:
         !      Date       Programmer          Description of change
@@ -162,6 +176,7 @@ contains
         real,            intent(in)           :: fc_gdd     ! Growth response to growing degree-days (0-1)
         real,            intent(in)           :: fc_drought ! Growth response to drought (0-1)
         real,            intent(in)           :: fc_perm    ! Growth response to permafrost (0-1)
+        real,            intent(in)           :: fc_flood   ! Growth response to flooding (0-1)
         real,            intent(out)          :: envstress  ! Growth response to stress
         real,            intent(in), optional :: fc_nutr
 
@@ -176,23 +191,25 @@ contains
             minstress = min(fc_gdd, fc_drought, shade, fc_nutr)
 
             ! Find the most limiting factor
-            if (minstress .eq. fc_gdd) then
+            if (minstress == fc_gdd) then
                 stressor = 1
-            else if (minstress .eq. fc_drought) then
+            else if (minstress == fc_drought) then
                 stressor = 2
-            else if (minstress .eq. shade) then
+            else if (minstress == shade) then
                 stressor = 3
-            else if (minstress .eq. fc_nutr) then
-                stressor = 5
+            else if (minstress == fc_nutr) then
+                stressor = 6
             end if
 
-            if (minstress .gt. fc_perm) then
+            if (minstress > fc_perm) then
                 stressor = 4
+            else if (minstress > fc_flood .and. fc_perm > fc_flood) then
+                stressor = 5
             endif
 
             ! Output is minimum of shade, gdd, nutrient, and drought times flood
             ! and permafrost
-            envstress = minstress*fc_perm
+            envstress = minstress*fc_flood*fc_perm
 
         else
             ! Don't use nutrient stress
@@ -201,21 +218,23 @@ contains
             minstress = min(fc_gdd, fc_drought, shade)
 
             ! Find the most limiting factor
-            if (minstress .eq. fc_gdd) then
+            if (minstress == fc_gdd) then
                 stressor = 1
-            else if (minstress .eq. fc_drought) then
+            else if (minstress == fc_drought) then
                 stressor = 2
-            else if (minstress .eq. shade) then
+            else if (minstress == shade) then
                 stressor = 3
             end if
 
-            if (minstress .gt. fc_perm) then
+            if (minstress > fc_perm) then
                 stressor = 4
+            else if (minstress > fc_flood .and. fc_perm > fc_flood) then
+                stressor = 5
             endif
 
             ! Output is minimum of shade, gdd, and drought times flood and
             ! permafrost
-            envstress = minstress*fc_perm
+            envstress = minstress*fc_flood*fc_perm
 
         end if
 
@@ -225,7 +244,8 @@ contains
         self%env_resp(2) = fc_drought
         self%env_resp(3) = shade
         self%env_resp(4) = fc_perm
-        if(present(fc_nutr)) self%env_resp(5) = fc_nutr
+        self%env_resp(5) = fc_flood
+        if(present(fc_nutr)) self%env_resp(6) = fc_nutr
 
     end subroutine env_stress
 
@@ -256,21 +276,28 @@ contains
         real :: dcbb ! Diameter at clear branch bole height (cm)
         real :: beta ! Stem shape parameter
 
-        hcbb = tree%canopy_ht
-        ht = tree%forska_ht
-        dbh = tree%diam_bht
-        beta = tree%spec_ptr%beta
+        if (tree%form <= 2) then
+            ! Tree or tree-like shrub form
 
-        if (ht .le. hcbb .or. ht .le. STD_HT) then
-            ! Just set to dbh
-            dcbb = dbh
+            hcbb = tree%canopy_ht
+            ht = tree%forska_ht
+            dbh = tree%diam_bht
+            beta = tree%spec_ptr%beta
+
+            if (ht <= hcbb .or. ht <= STD_HT) then
+                ! Just set to dbh
+                dcbb = dbh
+            else
+                ! Calculate
+                dcbb = ((ht - hcbb)/(ht - STD_HT))**(1.0/beta)*dbh
+            end if
+            ! Set
+            tree%diam_canht = dcbb
         else
-            ! Calculate
-            dcbb = ((ht - hcbb)/(ht - STD_HT))**(1.0/beta)*dbh
+            ! Shrub form
+            ! Just set to dbh
+            tree%diam_canht = tree%diam_bht
         end if
-        ! Set
-        tree%diam_canht = dcbb
-
 
     end subroutine stem_shape
 
@@ -302,9 +329,15 @@ contains
         hmax = tree%spec_ptr%max_ht
         s = tree%spec_ptr%s
 
-        ! Tree or tree-like shrub form
-        delta_ht = hmax - STD_HT
-        tree%forska_ht = STD_HT + delta_ht*(1.0 - exp(-(s*dbh/delta_ht)))
+        if (tree%form <= 2) then
+            ! Tree or tree-like shrub form
+            delta_ht = hmax - STD_HT
+            tree%forska_ht = STD_HT + delta_ht*(1.0 - exp(-(s*dbh/delta_ht)))
+        else
+            ! Shrub form
+            delta_ht  = hmax
+            tree%forska_ht = delta_ht*(1.0 - exp(-(s*dbh/delta_ht)))
+        end if
 
     end subroutine forska_height
 
@@ -326,11 +359,9 @@ contains
         class(TreeData), intent(inout) :: tree ! Tree object
 
         ! Data dictionary: local varibles
-        real            :: dbh       ! Diameter at breask height (cm)
+        type (TreeData) :: tree_0    ! Local copy of tree object
         real            :: ht        ! Tree height (m)
-        real            :: hcbb      ! Clear branch bole height (m)
         real            :: hrt       ! Rooting depth (m)
-        real            :: bulk      ! Wood bulk density (t/m3)
         real            :: stembc    ! Stem biomass (tC)
         real            :: branchbc  ! Branch biomass (tC)
         real            :: abovegr_c ! Aboveground woody biomass (tC)
@@ -339,27 +370,50 @@ contains
         ht = tree%forska_ht
         hrt = tree%spec_ptr%rootdepth
 
-        ! Calculate diameter at cbb
-        call stem_shape(tree)
+        if (tree%form <= 2) then
 
-        ! Calculate stem biomass (tC)
-        stembc   = stem_biomass_c(tree)
+            ! Tree or tree-like shrub form
 
-        ! Calculate branch biomass (tC)
-        branchbc = branch_biomass_c(tree)
+            ! Copy tree object
+            call copy_tree(tree_0, tree)
 
-        ! Aboveground woody biomass is branch + stem
-        abovegr_c = stembc + branchbc
+            ! Calculate diameter at cbb
+            call stem_shape(tree)
 
-        ! Calculate root biomass (tC)
-        root_c    = stembc*hrt/ht + branchbc
+            ! Calculate stem biomass (tC)
+            stembc   = stem_biomass_c(tree)
 
-        ! Set values
-        tree%biomC = abovegr_c + root_c
-        tree%stemC = stembc
-        tree%branchC = branchbc
-        tree%rootC = root_c
+            ! Calculate branch biomass (tC)
+            branchbc = branch_biomass_c(tree)
 
+            ! Aboveground woody biomass is branch + stem
+            abovegr_c = stembc + branchbc
+
+            ! Calculate root biomass (tC)
+            root_c    = stembc*hrt/ht + branchbc
+
+            ! Set values
+            tree%biomC = abovegr_c + root_c
+            tree%stemC = stembc
+            tree%branchC = branchbc
+            tree%rootC = root_c
+
+        else
+            ! Shrub form
+
+            ! Calculate woody biomass (tC)
+            abovegr_c = woody_biomass(tree)
+
+            ! Calculate root biomass (tC)
+            root_c = 0.3127*abovegr_c*(hrt/ht)
+
+            ! Set values
+            tree%biomC = abovegr_c
+            tree%stemC = abovegr_c*0.5
+            tree%branchC = abovegr_c*0.5
+            tree%rootC = root_c
+
+        end if
 
     end subroutine biomass_c
 
@@ -464,7 +518,7 @@ contains
         rand_val = urand()
 
         ! Check against parameter
-        if (rand_val .lt. CHECK(k)/agemax) then
+        if (rand_val < CHECK(k)/agemax) then
             a_survive = .false.
         else
             a_survive = .true.
@@ -502,7 +556,7 @@ contains
         rand_val = urand()
 
         ! Check against parameter
-        if (tree%mort_marker .and. rand_val .lt. CHECK(k)) then
+        if (tree%mort_marker .and. rand_val < CHECK(k)) then
             g_survive = .false.
         else
             g_survive = .true.
@@ -510,53 +564,101 @@ contains
 
     end subroutine growth_survival
 
-    subroutine fire_survival(tree, av_fuel, f_survive)
+    !:.........................................................................:
+
+    subroutine fire_survival(tree, I_surf, tau_l, active_crowning, CFB,        &
+            f_survive)
         !
-        !  Calculates survival of a tree from a fire event
+        !  Calculates survival of a tree from a fire event.
+        !  Adapted from Thonicke et al. 2010 Biogeosciences 7:1991-2010
         !
         !  Record of revisions:
         !      Date       Programmer          Description of change
         !      ====       ==========          =====================
-        !    10/10/18     A. C. Foster         Original Code
+        !    05/01/19     A. C. Foster        Original Code
 
         ! Data dictionary: constants
-        real, parameter :: CK1 = 0.21111
-        real, parameter :: CK2 = -0.00445
+        real, parameter :: I_EXP = 0.667 ! Exponent for intensity - scorch height relationship
+        real, parameter :: R_CK = 1.0    ! Resistance factor for crown scorch survival
+        real, parameter :: P = 3.0       ! Parameter based on defoliation from crown scorch
 
         ! Data dictionary: calling arguments
-        class(TreeData), intent(inout) :: tree      ! Tree object
-        real,            intent(in)    :: av_fuel   ! Available fuel for burning (t/ha)
-        logical,         intent(out)   :: f_survive ! Did tree survive?
+        class(TreeData), intent(inout) :: tree            ! Tree object
+        real,            intent(in)    :: I_surf          ! Surface fire intensity (kW/m)
+        real,            intent(in)    :: tau_l           ! Residence time of fire (min)
+        logical,         intent(in)    :: active_crowning ! Active crown fire?
+        real,            intent(in)    :: CFB             ! Crown fraction burnt
+        logical,         intent(out)   :: f_survive       ! Does tree survive?
 
         ! Data dictionary: local variables
-        real :: pfire    ! Probability of fire mortality
-        real :: dbh_eff  ! Effective DBH (cm)
-        real :: rand_val ! Random uniform
+        real :: cl       ! Crown length (m)
+        real :: ck       ! Proportion of crown scorched (0-1)
+        real :: bt       ! Bark thickness (cm)
+        real :: tau_c    ! Critical time for cambial damage (min)
+        real :: sh       ! Scorch height (m)
+        real :: tau_frac ! Temporary varible for calculating pm_tau
+        real :: pm_tau   ! Probability of mortality from cambial damage
+        real :: pm_CK    ! Probability of mortality from crown scorch
+        real :: pm_fire  ! Probability of mortality from fire
+        real :: rand_val ! Random value (uniform)
 
-        ! Get effective DBH (cm)
-        if (tree%diam_bht >= 40.0) then
-            dbh_eff = 40.0
-        else
-            dbh_eff = tree%diam_bht
+        if (.not. active_crowning) then
+
+            ! Tree *may* not be totally scorched
+
+            ! Calculate crown length (m)
+            cl = tree%forska_ht - tree%canopy_ht
+
+            ! Calculate scorch height (m)
+            sh = tree%spec_ptr%F_i*(I_surf**I_EXP)
+
+            ! Calculate proportion crown scorched (0 to 1)
+            ck = (sh - tree%forska_ht + cl)/cl
+            ck = max(0.0, min(1.0, ck))
+            tree%CK = ck
+
+        else if (active_crowning) then
+
+            ! Scorching from active crown fire
+            ck = (sh - tree%forska_ht + cl)/cl
+            ck = max(0.0, min(1.0, ck))
+            ck = max(ck, CFB)
+            tree%CK = ck
         end if
 
-        ! Calculate crown scorch (%)
-        tree%CK = min(100.0, 100.0*(CK1 + CK2*dbh_eff)*av_fuel)
-        if (tree%CK <= epsilon(1.0)) tree%CK = 0.0
+        ! Calculate bark thickness (cm)
+        bt = tree%diam_bht*tree%spec_ptr%bark_thick
 
-        ! Fire probability
-        pfire = 1/(1 + exp(-1.466 +                                            &
-                        1.91*(tree%spec_ptr%bark_thick*tree%diam_bht) -        &
-                        0.1775*((tree%spec_ptr%bark_thick*tree%diam_bht)**2) - &
-                        0.000541*tree%CK**2))
+        ! Calculate critical time for cambial damage (min)
+        tau_c = 2.9*(bt**2)
 
-        ! Check for fire mortality
+        ! Calculate probability of mortality due to cambial damage
+        tau_frac = tau_l/tau_c
+        if (tau_frac <= 0.22) then
+            pm_tau = 0.0
+        else if (tau_frac < 0.22 .and. tau_frac < 2.0) then
+            pm_tau = 0.563*tau_frac - 0.125
+        else if (tau_frac >= 2.0) then
+            pm_tau = 1.0
+        end if
+
+        ! Calculate probability of mortality due crown damage
+        pm_CK = R_CK*(ck**P)
+
+        ! Calculate overall probability of mortality
+        pm_fire = pm_tau + pm_CK - pm_tau*pm_CK
+
+        ! Determine if tree killed by fire
         rand_val = urand()
-        if (rand_val .lt. Pfire) then
+        if (rand_val < pm_fire) then
             f_survive = .false.
         else
             f_survive = .true.
         endif
+
+        ! Set values
+        tree%pm_tau = pm_tau
+        tree%pm_CK = pm_CK
 
     end subroutine fire_survival
 
@@ -588,7 +690,7 @@ contains
 
         ! Check for survival
         rand_val=urand()
-        if (rand_val .lt. pwind) then
+        if (rand_val < pwind) then
             w_survive = .false.
         else
             w_survive = .true.
@@ -630,8 +732,15 @@ contains
         g = tree%spec_ptr%g
         s = tree%spec_ptr%s
 
-        temp = s*exp(-s*dbh/(hmax - STD_HT))*dbh
-        tree%diam_opt = g*dbh*(1.0 - dbh*ht/dmax/hmax)/(2.0*ht + temp)
+        if (tree%form <= 2) then
+            ! Tree or tree-like shrub
+            temp = s*exp(-s*dbh/(hmax - STD_HT))*dbh
+            tree%diam_opt = g*dbh*(1.0 - dbh*ht/dmax/hmax)/(2.0*ht + temp)
+        else
+            ! Shrub
+            temp = s*exp(-s*dbh/(hmax))*dbh
+            tree%diam_opt = g*dbh*(1.0 - dbh*ht/dmax/hmax)/(2.0*ht + temp)
+        end if
 
     end subroutine max_growth
 
@@ -673,6 +782,37 @@ contains
         stem_biomass_c = temp*dbh*dbh*ht
 
     end function stem_biomass_c
+
+    !:.........................................................................:
+
+    real function woody_biomass(tree)
+        !
+        !  Calculates aboveground woody biomass (tC) of a shrub form
+        !
+        !  Record of revisions:
+        !      Date       Programmer          Description of change
+        !      ====       ==========          =====================
+        !    10/10/20     A. C. Foster        Original code
+
+        ! Data dictionary: calling arguments
+        class(TreeData), intent(in) :: tree ! Tree object
+
+        ! Data dictionary: local variables
+        real :: dbh          ! Shrub diameter (cm)
+        real :: ht           ! Shrub height (m)
+        real :: bulk_density ! Wood bulk density (t/m3)
+        real :: beta         ! Stem shape parameter
+        real :: temp         ! Temporary variable
+
+        dbh = tree%diam_bht
+        ht = tree%forska_ht
+        bulk_density = tree%spec_ptr%wood_bulk_dens
+        beta = tree%spec_ptr%beta
+
+        temp = 1E-4*PI*0.25*B_TO_C*bulk_density*beta/(beta + 2.0)
+        woody_biomass = temp*dbh*dbh*ht*1.8
+
+    end function woody_biomass
 
     !:.........................................................................:
 
@@ -777,6 +917,7 @@ contains
         call csv_write(tree_unit, trim(adjustl(self%spec_ptr%genus_name)),     &
             .false.)
         call csv_write(tree_unit, self%spec_ptr%unique_id, .false.)
+        call csv_write(tree_unit, self%tree_id, .false.)
         call csv_write(tree_unit, self%row, .false.)
         call csv_write(tree_unit, self%col, .false.)
         call csv_write(tree_unit, self%tree_age, .false.)
@@ -814,7 +955,5 @@ contains
         end if
 
     end subroutine delete_tree
-
-    !:.........................................................................:
 
 end module Tree

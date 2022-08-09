@@ -17,6 +17,7 @@ module Parameters
   integer             :: year_print_interval ! Interval to print output
   integer             :: maxtrees            ! Maximum number of trees per plot
   integer             :: maxcells            ! Maximum number of rowsxcolumns per plot
+  integer             :: maxshrubs           ! Maximum number of shrubs per plot
   integer             :: maxheight           ! Maximum height of trees (m)
 
   ! Variables determining whether to use explicit seeds for RGNs
@@ -24,12 +25,16 @@ module Parameters
   logical             :: debug      ! Are we debugging?
 
   ! Optional files and settings
+  logical             :: fire_on           ! Are fire dynamics on?
   logical             :: adjust_altitude   ! Whether or not to adjust for altitude
   logical             :: use_rangelist     ! Whether or not to use rangelist
   logical             :: use_climstd       ! Whether or not to use stddevs adjustments for climate
   logical             :: testing           ! Whether or not to print out testing files
   logical             :: plot_level_data   ! Whether or not to print out plot-level data
   logical             :: tree_level_data   ! Whether or not to print out tree-level data
+  logical             :: conds_testing     ! Whether or not to print out daily fuel conditions data
+  logical             :: fire_testing      ! Are we forcing a fire event?
+  logical             :: reg_testing       ! Whether or not to print out regeneration data
 
   ! Climate change
   logical             :: with_clim_change  ! Whether or not we are simulating climate change
@@ -50,8 +55,7 @@ module Parameters
   character(len=4)    :: incr_or_decr_prcp ! Increasing ('incr') or deacreasing ('decr') precipitation
   character(len=4)    :: incr_or_decr_temp ! Increasing ('incr') or deacreasing ('decr') temperature
 
-
   ! Litter parameters
-  real, dimension(LIT_LEVS, 10) :: litter_params
+  real, dimension(LIT_LEVS, 12) :: litter_params
 
 end module Parameters

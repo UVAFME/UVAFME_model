@@ -210,7 +210,7 @@ contains
         posb = 1
 
         ! Get rid of quotes
-        do while (k .ge. 1)
+        do while (k >= 1)
             buffer(posb:) = value(pos:)
             buffer(posb+k:) = '"' // value(pos+k:)
             pos = pos + k + 1

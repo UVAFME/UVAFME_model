@@ -24,6 +24,7 @@ program UVAFME
     character(len=8), parameter :: SPECFIELD = 'species' ! Field name for species output
 
     ! Data dictonary: global variables
+    type(SiteData),    dimension(:),    allocatable  :: sites           ! Array of site objects
     type(SpeciesData), dimension(:),    allocatable  :: species_data    ! Array of species data objects
     real,              dimension(:, :), allocatable  :: all_site_vals   ! Array of site runtime parameters
     integer,           dimension(:, :), allocatable  :: species_ids     ! Array of species ids for each site
@@ -31,54 +32,54 @@ program UVAFME
     type(Groups)                                     :: species_present ! Species/genus names
     real                                             :: start_time      ! Start time of run
     real                                             :: total_time      ! Time for run
+    real                                             :: init_time       ! Time for intitalization
+    integer                                          :: sndx            ! Species array index
     integer                                          :: year            ! Year of simulation
     integer                                          :: nargs           ! Number of command-line arguments
-    integer                                          :: sndx            ! Looping index
     integer                                          :: numsites        ! Number of sites to run
     character(len=80)                                :: filelist        ! File list file name
+
     interface
 
-    subroutine drawBanner(numsites, species_present)
-        !
-        !  Writes the UVAFME banner and runtime parameters currently in use
-        !
-        !  Record of revisions:
-        !      Date       Programmer          Description of change
-        !      ====       ==========          =====================
-        !    07/26/12    K. Holcomb           Original Code
-        !
+        subroutine drawBanner(numsites, species_present)
+            !
+            !  Writes the UVAFME banner and runtime parameters currently in use
+            !
+            !  Record of revisions:
+            !      Date       Programmer          Description of change
+            !      ====       ==========          =====================
+            !    07/26/12    K. Holcomb           Original Code
+            !
 
-        use Parameters
-        use GenusGroups
-        implicit none
+            use Parameters
+            use GenusGroups
+            implicit none
 
-        type(Groups), intent(in) ::  species_present ! Species/genus names
-        integer,      intent(in) ::  numsites        ! Number of sites to run
+            type(Groups), intent(in)  ::  species_present ! Species/genus names
+            integer,      intent(in)  ::  numsites        ! Number of sites to run
 
-    end subroutine drawBanner
+        end subroutine drawBanner
 
-    subroutine showProgress(asite)
-        !
-        !  Prints out current site being run and some site parameters
-        !
-        !  Record of revisions:
-        !      Date       Programmer          Description of change
-        !      ====       ==========          =====================
-        !    07/26/12    K. Holcomb           Original Code
-        !
+        subroutine showProgress(asite)
+            !
+            !  Prints out current site being run and some site parameters
+            !
+            !  Record of revisions:
+            !      Date       Programmer          Description of change
+            !      ====       ==========          =====================
+            !    07/26/12    K. Holcomb           Original Code
+            !
 
-        use Constants
-        use Parameters
-        use Site
-        implicit none
+            use Constants
+            use Parameters
+            use Site
+            implicit none
 
-        type(SiteData), intent(in) :: asite ! Site object
+            type(SiteData), intent(in) :: asite ! Site object
 
-    end subroutine showProgress
+        end subroutine showProgress
 
     end interface
-
-!:.............................................................................:
 
     ! Get command-line filelist name argument
     nargs = command_argument_count()
@@ -113,50 +114,55 @@ program UVAFME
     allocate(species_ids(numsites, size(species_data)))
 
 
-    do sndx = 1, numsites
+    ! loop on sites and free memory
+    ! associated with each site after it is finished
+
+     do sndx = 1, numsites
 
         ! Set the random number generator seed
         call set_site_rng_seed(fixed_seed)
 
-        ! Initialize current site
-        call initialize_site(current_site, all_site_vals(sndx, :),            &
+         ! Initialize current site
+         call initialize_site(current_site, all_site_vals(sndx, :),        &
             species_data, species_ids, sndx)
 
         ! Make sure the site exists and has valid climate data
         if (current_site%site_id == INVALID) then
-            write(*, *) '       No valid site or climate data for site ',      &
+             write(logf, *) 'No valid site or climate data for site ',     &
                 current_site%site_name
-            write(*, *) '            Skipping site ', current_site%site_name
-            write(*, *) '                          '
+             write(logf, *) 'Skipping site ', current_site%site_name
+             write(*, *) '                          '
 
             ! Free the memory used by this site
             call delete_site(current_site)
-            cycle
+             cycle
          endif
 
          ! Also skip this site if no species are present
-        if ( size(current_site%species) .eq. 0 )  then
-            write(*, *) '              No species present in site ',           &
+        if (size(current_site%species) == 0 .or.                           &
+            current_site%site_id == INVALID)  then
+            write(logf, *) 'No species present in site ',                  &
                 current_site%site_id
-            write(*, *) '            Skipping site ', current_site%site_name
+            write(logf, *) 'Skipping site ', current_site%site_name
             write(*, *) '             '
 
             ! Free the memory used by this site
             call delete_site(current_site)
-            cycle
+             cycle
          endif
 
-        ! Print out current site and site vars to screen
-        call showProgress(current_site)
+         ! Print out current site and site vars to screen
+         call showProgress(current_site)
 
-        ! Run the model
-        do year = 0, numyears
+         ! Run the model
+         do year = 0, current_site%stand_age
 
-            ! Calculate current weather/site variables for the year
-            call BioGeoClimate(current_site, year)
+             ! Calculate current weather/site variables for the year
+             call BioGeoClimate(current_site, year)
 
             ! Write climate and soil data
-            if (mod(year, year_print_interval) == 0 .or. year == numyears) then
+            if (mod(year, year_print_interval) == 0 .or.                   &
+                year == current_site%stand_age) then
                 call write_site_data(current_site, year)
                 call write_soiln_data(current_site, year)
             end if
@@ -169,35 +175,37 @@ program UVAFME
             call Mortality(current_site, year)
             call Renewal(current_site, year)
 
-            ! Print output
-            if (mod(year, year_print_interval) == 0 .or. year == numyears) then
+             ! Print output
+             if (mod(year, year_print_interval) == 0 .or.                   &
+                year == current_site%stand_age) then
 
                 ! Across-species attributes
                 call total_plot_values(current_site, year)
 
                 ! Genus-and species-level attributes
-                call write_genus_or_species_data(current_site,                 &
-                    species_present, year, SPECFIELD,                          &
-                    species_present%numspecies, biom_by_s, pl_biom_by_s)
+                call write_genus_or_species_data(current_site,             &
+                    species_present, year, SPECFIELD,                      &
+                    species_present%numspecies, biom_by_s, pl_biom_by_s,   &
+                    species_ids, sndx)
 
-                call write_genus_or_species_data(current_site,                 &
-                    species_present, year, GENFIELD,                           &
+                call write_genus_or_species_data(current_site,             &
+                    species_present, year, GENFIELD,                       &
                     species_present%numgenera, biom_by_g, pl_biom_by_g)
 
-                call write_dead_genus_or_species_data(current_site,            &
-                    species_present, year, SPECFIELD,                          &
+                call write_dead_genus_or_species_data(current_site,        &
+                    species_present, year, SPECFIELD,                      &
                     species_present%numspecies, dead_s, dead_ps)
 
-                call write_dead_genus_or_species_data(current_site,            &
-                    species_present, year, GENFIELD,                           &
+                call write_dead_genus_or_species_data(current_site,        &
+                    species_present, year, GENFIELD,                       &
                     species_present%numgenera, dead_g, dead_pg)
 
-                ! Tree level data
+                ! Tree-level attributes
                 if (tree_level_data) then
                     call write_tree_data(current_site, year)
                 end if
 
-            end if
+             end if
 
         end do
 
@@ -209,13 +217,13 @@ program UVAFME
         ! Print current run time
         call cpu_time(total_time)
         write(*, *) '  Cumulative time : ', total_time - start_time
-        write(*, '(A80)')                                                      &
+        write(*, '(A80)')                                                  &
  '============================================================================='
 
-    end do
+     end do
 
-    ! Close output files created
-    call close_outputFiles
+     ! Close output files created
+     call close_outputFiles
 
 end program UVAFME
 
@@ -255,6 +263,7 @@ subroutine drawBanner(numsites, species_present)
     write(*, 400) 'Number of plots:', numplots
     write(*, 400) 'Number of species:', species_present%numspecies
     write(*, 400) 'Maximum number of trees:', maxtrees
+    write(*, 400) 'Maximum number of shrubs:', maxshrubs
     write(*, 400) 'Maximum number of cells:', maxcells*maxcells
     write(*, 401) 'Plotsize:', plotsize
 
@@ -267,23 +276,23 @@ subroutine drawBanner(numsites, species_present)
 
             write(*, *) 'Running with linear cc'
 
-            if (incr_or_decr_temp .eq. 'incr' .and.                            &
-                incr_or_decr_prcp .eq. 'incr') then
+            if (incr_or_decr_temp == 'incr' .and.                            &
+                incr_or_decr_prcp == 'incr') then
                 write(*, 401) 'Total tmin increase', incr_tmin_by
                 write(*, 401) 'Total tmax increase', incr_tmax_by
                 write(*, 401) 'Total precip increase', incr_precip_by
-            else if (incr_or_decr_temp .eq. 'decr' .and.                       &
-                incr_or_decr_prcp .eq. 'decr') then
+            else if (incr_or_decr_temp == 'decr' .and.                       &
+                incr_or_decr_prcp == 'decr') then
                 write(*, 401) 'Total tmin decrease', decr_tmin_by
                 write(*, 401) 'Total tmax decrease', decr_tmax_by
                 write(*, 401) 'Total precip decrease', decr_precip_by
-            else if (incr_or_decr_temp .eq. 'incr' .and.                       &
-                incr_or_decr_prcp .eq. 'decr') then
+            else if (incr_or_decr_temp == 'incr' .and.                       &
+                incr_or_decr_prcp == 'decr') then
                 write(*, 401) 'Total tmin increase', incr_tmin_by
                 write(*, 401) 'Total tmax increase', incr_tmax_by
                 write(*, 401) 'Total precip decrease', decr_precip_by
-            else if (incr_or_decr_temp .eq. 'decr' .and.                       &
-                incr_or_decr_prcp .eq. 'incr') then
+            else if (incr_or_decr_temp == 'decr' .and.                       &
+                incr_or_decr_prcp == 'incr') then
                 write(*, 401) 'Total tmin decrease', decr_tmin_by
                 write(*, 401) 'Total tmax decrease', decr_tmin_by
                 write(*, 401) 'Total precip increase', incr_precip_by
@@ -339,19 +348,19 @@ subroutine showProgress(asite)
     write(*, 501) 'Number of species present: ', num_site_species
 
     ! Get altitude adjustment (if present), and print out
-    if (adjust_altitude .and. asite%altitude .ne. RNVALID) then
+    if (adjust_altitude .and. asite%altitude /= RNVALID) then
         write(*, *) '             Site altitude adjustment ', asite%altitude
     endif
 
     write(*,*)
 
     ! Write some other site parameters
-    write(*, 502) asite%elevation, asite%slope, asite%aspect, asite%fire_prob
+    write(*, 502) asite%elevation, asite%slope, asite%aspect, asite%wind_prob
 
     500 format(14X, A, I10, 4X, a)
     501 format(14X, A, I8)
     502 format(7X, 'Site parameters: elevation ', F9.3, '   slope     ', F7.3, &
-        /  23X, ' aspect      ', F7.3, '   fire/1000 ', F7.3)
+        /  23X, ' aspect      ', F7.3, '   wind/1000 ', F7.3)
 
 end subroutine showProgress
 

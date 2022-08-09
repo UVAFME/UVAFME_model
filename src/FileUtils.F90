@@ -38,6 +38,9 @@ module FileUtils
     integer                   :: litterfile   ! Unit number for input litter parameters file
     integer                   :: cexfile      ! Unit number for input extra climate file
     integer                   :: cexstdfile   ! Unit number for input extra cliamte stddev file
+    integer                   :: lightfile    ! Unit number for input lightning file
+    integer                   :: cgclightfile ! Unit number for input climate change lightning file
+    integer                   :: mclimfile    ! Unit number for input monthly climate file
     integer                   :: logf         ! Unit number for output log file
     integer                   :: sitef        ! Unit number for output site/year log file
     integer                   :: clim_unit    ! Unit number for output climate file
@@ -54,6 +57,10 @@ module FileUtils
     integer                   :: dead_ps      ! Unit number for plot-level dead species-specific output file
     integer                   :: moist_out    ! Unit number for soil moisture output file
     integer                   :: soiln_day    ! Unit number for daily soil output file
+    integer                   :: fuel_conds   ! Unit number for daily fuel conditions output file
+    integer                   :: dayfire      ! Unit number for fire output file
+    integer                   :: cons_out     ! Unit number for combustion output file
+    integer                   :: spec_regen   ! Unit number for species regeneration output file
 
     contains
 
@@ -187,7 +194,7 @@ module FileUtils
         else
             iunit = unit_number()
             open(iunit, file = fname, action = fmode, iostat = ios)
-            if (ios .ne. 0) then
+            if (ios /= 0) then
                 write(message, '(A,A,A,I6)') "Problem opening",                &
                     fname(1:len_trim(fname)), " ios: ", ios
                 call warning(message)
@@ -287,7 +294,7 @@ module FileUtils
         flen = len_trim(adjustl(tmpfile))
 
         ! Construct format string
-        write(fmtstr, '(a,i2,a,a,i2,a)') '(a', slen, ',a1,' ,'a', flen, ')'
+        write(fmtstr, '(A,I2,A,A,I2,A)') '(A', slen, ',A1,' ,'A', flen, ')'
 
         ! Construct path
         write(pname, fmtstr) tmpsub(1:slen), SEPARATOR, tmpfile(1:flen)
@@ -338,7 +345,7 @@ module FileUtils
         suflen = len_trim(adjustl(tmpsuf))
 
         ! Construct format string
-        write(fmtstr, '(a,i2,a,i2,a)') '(a', strlen, ',a', suflen, ')'
+        write(fmtstr, '(A,I2,A,I2,A)') '(A', strlen, ',A', suflen, ')'
 
         ! Construct filename and remove whitespace
         write(fname, fmtstr) tmpstr(1:strlen), tmpsuf(1:suflen)
@@ -364,7 +371,7 @@ module FileUtils
         character(len = *), intent(in) :: message ! Error message
 
         ! Print the message
-        write(*, *) message
+        write(logf, *) message
 
     end subroutine warning
 
@@ -384,7 +391,7 @@ module FileUtils
         character(len = *), intent(in) :: message ! Error message
 
         ! Write error message
-        write(*, *) message
+        write(logf, *) message
 
         ! Stop the program
         stop 10

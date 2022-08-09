@@ -33,7 +33,7 @@ contains
         ! Data dictionary: calling arguments
         real, intent(in) :: x ! Input number
 
-        if (x .gt. 0.0) then
+        if (x > 0.0) then
             kron = 1.0
         else
             kron = 0.0
@@ -94,13 +94,13 @@ contains
         if (present(missing)) then
 
             ! Count how many items in the array aren't equal to missing
-            nelems = count(array .ne. missing)
+            nelems = count(array /= missing)
 
             ! Get mean, masking missing values
-            arith_mean = sum(array, mask = array .ne. missing)/float(nelems)
+            arith_mean = sum(array, mask = array /= missing)/float(nelems)
 
             ! Get standard deviation, maasking missing values
-            sqr_sum = sum(array**2, mask = array .ne. missing)
+            sqr_sum = sum(array**2, mask = array /= missing)
         else
 
             ! Use whol array
@@ -207,8 +207,6 @@ contains
         call MergeSort(A, Ai, work, worki)
 
     end subroutine merge_index
-
-    !:.........................................................................:
 
     recursive subroutine MergeSort(A, Ai, work, worki)
         !

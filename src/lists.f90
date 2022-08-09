@@ -114,7 +114,7 @@ contains
         ! Loop through and fill with old values, skipping index to delete
         ncount = 1
         do n = 1, list_len
-            if (n .ne. list_index) then
+            if (n /= list_index) then
                 list(ncount) = temp_list(n)
                 ncount = ncount + 1
             endif

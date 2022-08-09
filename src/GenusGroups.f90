@@ -60,7 +60,7 @@ contains
         ! Loop through species names and genera and add to instance array
         do na = 1, num_all_species
             do ns = 1, group%numspecies
-                if (species_names(ns) .eq.                                     &
+                if (species_names(ns) ==                                       &
                                 species_data(na)%unique_id) then
                     group%spec_names(ns, 1) =                                  &
                                         species_data(na)%genus_name
@@ -99,7 +99,7 @@ contains
         temp_array = array
 
         ! If the array has only one element then we are done
-        if (nsize .eq. 1) then
+        if (nsize == 1) then
             allocate(unique_array(1))
             unique_array(1) = array(1)
             return
@@ -112,7 +112,7 @@ contains
         ! array returned to be the correct length)
         ncount = 1
         do n = 2, nsize
-            if (temp_array(n - 1) .ne. temp_array(n)) then
+            if (temp_array(n - 1) /= temp_array(n)) then
                 ncount = ncount + 1
             endif
         enddo
@@ -124,7 +124,7 @@ contains
         unique_array(1) = temp_array(1)
         ncount = 2
         do n = 2, nsize
-            if (temp_array(n - 1) .ne. temp_array(n)) then
+            if (temp_array(n - 1) /= temp_array(n)) then
                 unique_array(ncount) = trim(temp_array(n))
                 ncount = ncount + 1
             endif

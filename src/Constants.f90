@@ -28,6 +28,9 @@ module Constants
     real, parameter :: KG_TO_T = 0.001      ! Convert from kg to tonnes
     real, parameter :: B_TO_C = 0.45        ! Convert from dry biomass to Carbon
     real, parameter :: H2O_D = 1000.0       ! Density of water
+    real, parameter :: KM_TO_M = 1000.0     ! Convert from km to m
+    real, parameter :: MIN_TO_SEC = 60.0    ! Convert from minutes to seconds
+    real, parameter :: HR_TO_MIN = 60.0     ! Convert from hours to minutes
 
     ! Date-related constants
     integer, parameter ::  NTEMPS = 12         ! Months in a year
@@ -44,16 +47,28 @@ module Constants
 
     ! Array-related constants
     integer, parameter :: LIT_LEVS = 20 ! Number of litter classes
-    integer, parameter :: FC_NUM = 5    ! Number of environmental stressors
-    integer, parameter :: M_TYPES = 7   ! Number of mortality types
+    integer, parameter :: M_TYPES = 9   ! Number of mortality types
+    integer, parameter :: FC_NUM = 6    ! Number of environmental stressors
+    integer, parameter :: FL_LEVS = 10  ! Number of fuel categories
+    integer, parameter :: FLDEC = 1     ! Array location of deciduous leaf litter in fuel array
+    integer, parameter :: FLCON = 2     ! Array location of conifer needle litter in fuel array
+    integer, parameter :: FLTW = 3      ! Array location of twig litter in fuel array
+    integer, parameter :: FLSBR = 4     ! Array location of small branch litter in fuel array
+    integer, parameter :: FLLBR = 5     ! Array location of large branch litter in fuel array
+    integer, parameter :: FLBL = 6      ! Array location of bole litter in fuel array
+    integer, parameter :: FLSH = 10     ! Aray location of live shrub fuel in fuel array
+    integer, parameter :: FLRT = 9      ! Array location of root litter in fuel array
+    integer, parameter :: FLDM = 8      ! Array location of moss litter in fuel array
+    integer, parameter :: FLLM = 7      ! Array location of live moss in fuel array
     integer, parameter :: IROOT = 13    ! Array location of roots in litter array
     integer, parameter :: ITW = 16      ! Array location of twigs in litter array
     integer, parameter :: ISBR = 17     ! Array location of small branches in litter array
     integer, parameter :: ILBR = 18     ! Array location of large branches in litter array
     integer, parameter :: ISBL = 14     ! Array location of small boles in litter array
     integer, parameter :: ILBL = 15     ! Array location of large boles in litter array
-    integer, parameter :: IFIRE = 6     ! Array location of burned trees
-    integer, parameter :: IWIND = 7     ! Array location of wind-killed trees
+    integer, parameter :: IFIRE = 7     ! Array location of burned trees
+    integer, parameter :: IHARV = 8     ! Array location of harvested trees
+    integer, parameter :: IWIND = 9     ! Array location of wind-killed trees
 
     ! Tree-related constants
     real,    parameter :: STD_HT = 1.3         ! Standard height for DBH measurements (m)
@@ -64,7 +79,7 @@ module Constants
     real               :: CON_LEAF_RATIO = 0.3 ! Conifer to deciduous leaf area ratio
 
     ! DBH bins (minimum)
-    real, dimension(NHC),   parameter :: DBC_MIN = [0.5, 5.0, 10.0, 20.0,      &
+    real, dimension(NHC),   parameter :: DBC_MIN = [0.1, 5.0, 10.0, 20.0,      &
         30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0]
 
     ! DBH bins (maximum)
@@ -76,9 +91,10 @@ module Constants
     real, parameter :: SNOW_DENS = 217.0    ! Snow density (kg/m3) (Sturm et al. 2010)
     real, parameter :: BULK_LITTER = 44.1   ! Litter bulk density (kg/m3)
     real, parameter :: BULK_DUFF = 55.3     ! Duff bulk density (kg/m3)
-    real, parameter :: BULK_MOSS = 5.2      ! Moss bulk density (kg/m3)
+    real, parameter :: BULK_MOSS = 18       ! Moss bulk density (kg/m3)
     real, parameter :: BULK_CON = 28.6      ! Conifer needles bulk density (kg/m3)
     real, parameter :: BULK_DEC = 100.0     ! Deciduous leaves bulk density (kg/m3)
+    real, parameter :: DRYING_RAT = 66000.0 ! Drying ratio for fuel (Thonicke et al. 2010)
 
     ! Percent of crown woody biomass in twigs (1), small branches (2),
     ! and large branches (3) -- Thonicke et al. (2010)
@@ -86,6 +102,6 @@ module Constants
 
     ! Parameter for effect of organic layer depth on regeneration
     ! Depends on org_tol
-    real, dimension(3), parameter :: ORG_GF = [-2.4, -25.4, -50.4]
+    real, dimension(3), parameter :: ORG_GF = [-0.1, -10.4, -52.4]
 
 end module Constants
