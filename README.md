@@ -14,6 +14,14 @@ Please contact *Adrianna Foster* at adrianna.foster@nau.edu with any questions.
 ## Updates :
 ------------------------------
 
+### August 2022
+
+_Major Updates_
+
+Updates to include improved fire, flooding inundation, and shrub forms as in Foster et al. (2022) Environmental Research Letters 17(2) https://doi.org/10.1088/1748-9326/ac4c1e
+
+See the updated Technical Document for more information about these updates.
+
 ### January 2021
 
 _Major Updates_
@@ -37,5 +45,8 @@ UVAFME2018_site.csv. See the Running_UVAFME document for more information.
 To cite this model please use:
 
 Adrianna Foster, Jacquelyn Shuman, & Hank Shugart. (2020, June 5). UVAFME/UVAFME_model: BorealNA (Version v1.0). Zenodo. http://doi.org/10.5281/zenodo.3879074 <br/>
+and <br/>
+Updates to include improved fire, flooding inundation, and shrub forms as in Foster et al. (2022) Environmental Research Letters 17(2) https://doi.org/10.1088/1748-9326/ac4c1e
+<br/>
 and <br/>
 Foster et al. (2019) Ecological Modelling 409 https://doi.org/10.1016/j.ecolmodel.2019.108765
