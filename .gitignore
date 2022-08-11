@@ -14,3 +14,4 @@ sample_inputs/GetClimDat.R
 sample_inputs/output_data_sample/*csv
 sample_inputs/output_data_sample/*txt
 .Rhistory
+src/UVAFME_v3
