@@ -13,4 +13,4 @@ sample_inputs/UVAFME_output.R
 sample_inputs/GetClimDat.R
 sample_inputs/output_data_sample/*csv
 sample_inputs/output_data_sample/*txt
-
+.Rhistory
