@@ -9,7 +9,7 @@ This repository holds the source code for UVAFME. UVAFME is an individual-based 
 
 For more information about UVAFME see the [How To Guide](https://github.com/UVAFME/UVAFME_model/blob/main/Running_UVAFME.pdf) or visit the [UVAFME website](https://uvafme.github.io/).
 
-Please contact *Adrianna Foster* at adrianna.foster@nau.edu with any questions.
+Please contact *Adrianna Foster* at afoster@ucar.edu with any questions.
 
 ## Updates :
 ------------------------------
