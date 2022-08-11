@@ -113,7 +113,6 @@ program UVAFME
     ! Allocate species_ids to the number of site and species objects
     allocate(species_ids(numsites, size(species_data)))
 
-
     ! loop on sites and free memory
     ! associated with each site after it is finished
 

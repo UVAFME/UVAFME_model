@@ -237,7 +237,7 @@ contains
         self%recr_age       = species_data%recr_age
         self%dbh_min        = species_data%dbh_min
         self%min_recr_dbh   = species_data%min_recr_dbh
-        
+
     end subroutine copy_species
 
     !:.........................................................................:
@@ -255,12 +255,12 @@ contains
 
         ! Data dictionary: constants
         ! Light response parameters - based on shade tolerance
-        real, dimension(5), parameter :: LIGHT_C1 = [1.0, 1.31, 1.62, 1.93,    &
-            2.24]
-        real, dimension(5), parameter :: LIGHT_C2 = [4.64, 3.76, 2.888, 2.012, &
-            1.136]
-        real, dimension(5), parameter :: LIGHT_C3 = [0.05, 0.0575, 0.065,      &
-            0.0725, 0.08]
+        real, dimension(5), parameter :: LIGHT_C1 = [1.01, 1.02, 1.11, 1.24,   &
+            1.49]
+        real, dimension(5), parameter :: LIGHT_C2 = [4.62, 4.0, 2.52, 1.78,    &
+            1.23]
+        real, dimension(5), parameter :: LIGHT_C3 = [0.05, 0.055, 0.07,        &
+            0.08, 0.09]
 
         ! Data dictionary: calling arguments
         class(SpeciesData), intent(in) :: self ! Species object

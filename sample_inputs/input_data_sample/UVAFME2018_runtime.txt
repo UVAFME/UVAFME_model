@@ -12,13 +12,13 @@
 
 year_print_interval=5
 fixed_seed=.true.
-testing=.true.
-fire_on=.true.
-fire_testing=.true.
-reg_testing=.false.
+testing=.false.
+fire_on=.false.
+fire_testing=.false.
+reg_testing=.true.
 
 numyears=500
-numplots=100
+numplots=200
 plotsize=500
 maxtrees=1000
 maxcells=100
