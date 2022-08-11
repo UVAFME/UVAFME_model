@@ -10,4 +10,5 @@
 *log
 *aux
 sample_inputs/MakeClimDat.R
-sample_inputs/output_data_sample/*
+sample_inputs/output_data_sample/*csv
+sample_inputs/output_data_sample/*txt

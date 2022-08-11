@@ -1,2 +1,0 @@
- Site data initialized. Total read in:            2
- Species data initialized. total read in:            9
